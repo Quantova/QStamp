@@ -1,0 +1,59 @@
+{
+  "name": "@quantovainc/qstamp",
+  "version": "0.1.0",
+  "description": "Post quantum time stamping for records, software, financial data and AI artefacts on the Quantova chain, with receipts any party can verify.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "qstamp": "bin/qstamp.js"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "lib/",
+    "bin/",
+    "contract/",
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
+    "NOTICE",
+    "AUTHORS"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@quantovainc/qcore": "0.4.1"
+  },
+  "keywords": [
+    "post-quantum",
+    "quantum-safe",
+    "timestamp",
+    "notary",
+    "provenance",
+    "merkle",
+    "ml-dsa",
+    "fips-204",
+    "audit",
+    "quantova"
+  ],
+  "license": "Apache-2.0 OR MIT",
+  "author": "Quantova Inc",
+  "homepage": "https://github.com/Quantova/QStamp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Quantova/QStamp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Quantova/QStamp/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

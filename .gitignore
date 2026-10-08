@@ -1,0 +1,3 @@
+node_modules/
+*.qstamp.json
+.env*
