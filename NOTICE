@@ -7,5 +7,13 @@ texts in LICENSE-APACHE and LICENSE-MIT. Both licenses require that this notice,
 the Quantova Inc copyright, and the license text stay intact in copies and in any
 substantial portion of the software.
 
-Quantova is a registered trademark of Quantova Inc. The license covers the
-software only. It grants no right to use the Quantova name or marks.
+Quantova is a registered trademark of Quantova Inc. Qstamp, Quanta and QVM are
+trademarks of Quantova Inc. The license covers the software only. Under section 6
+of the Apache License 2.0 it grants no right to use the Qstamp, Quantova, Quanta
+or QVM names or marks, and modified versions must not be presented as the
+official software of Quantova Inc.
+
+Under section 4 of the Apache License 2.0, anyone who redistributes this
+software or a modified version must keep this NOTICE file, the copyright
+notice of Quantova Inc and the license text, and must mark every modified file
+with a prominent notice stating that it was changed.
