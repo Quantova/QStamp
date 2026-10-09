@@ -2,7 +2,29 @@
 
 Qstamp is a post quantum time stamping SDK for the Quantova chain. It produces evidence that a record existed in an exact form no later than a stated moment, and it lets any third party confirm that evidence without trusting the party that created it.
 
-The record itself never leaves the system that holds it. Only a salted cryptographic commitment is written to the chain.
+Qstamp proves records without disclosing them. The records stay private on the systems of the organisation that holds them. Only a salted cryptographic commitment is written to the chain, and no record content, prompt, personal data or payment detail is ever published.
+
+## What is published and what stays private
+
+Qstamp is designed for organisations that must prove what their systems did while keeping the underlying data confidential.
+
+The following stay on the systems of the organisation and are never sent by the SDK to Quantova Inc, to the network or to any other party.
+
+1. The records themselves, including prompts and instructions, agent inputs and outputs, reasoning, tool calls, documents, model files, personal data and payment details.
+2. The fingerprint of each record and the random salt bound to it.
+3. The receipts.
+
+The following are written to the chain, where anyone can read them.
+
+1. One 32 byte commitment for each batch, computed from the salted fingerprints of every record in the batch.
+2. The record kind, a number such as 6 for an AI agent action.
+3. The ordinary data of every transaction, namely the signing account, the contract, the block, the time and the fee.
+
+The commitment is the output of SHA3 over salted values. It cannot be reversed into any record, and because every record carries a fresh 256 bit random salt, nobody can confirm a guess about a record, even a short or predictable one. The commitment does not reveal how many records a batch holds or what they contain.
+
+A record is disclosed only when its holder chooses to produce it, for example to a court, a regulator or an auditor, together with its receipt. The verifier then checks the record against the commitment on the chain.
+
+Transparency in Qstamp therefore means that the proof can be inspected by anyone. It does not mean that the data is open.
 
 ## Purpose
 
@@ -22,7 +44,7 @@ Typical uses include financial and trading records, contracts and loan documents
 
 4. Commitment. The value written to the chain is the SHA3 hash of the byte 0x02, the domain label QSTAMP/ROOT/V1, the genesis hash of the chain, the contract address, the signer address, the record kind as an unsigned 64 bit big endian integer, the batch size as an unsigned 64 bit big endian integer and the tree root. Binding all of these means the batch cannot be replayed on another chain or contract, cannot be claimed by another signer who copies the commitment from a pending transaction, and cannot have its kind, size or record positions altered after anchoring.
 
-5. Anchoring. A single transaction calls the Qstamp contract with the commitment and a record kind. The contract emits one event that holds the address of the signer, the commitment and the kind. The contract keeps no state, holds no funds and has no owner or upgrade path. The Quantova chain admits only contract code signed by its attested compiler, so the deployed contract cannot be replaced by altered code at the same address.
+5. Anchoring. A single transaction calls the Qstamp contract with the commitment and a record kind, and nothing else about the batch is sent. The contract emits one event that holds the address of the signer, the commitment and the kind. The contract keeps no state, holds no funds and has no owner or upgrade path. The Quantova chain admits only contract code signed by its attested compiler, so the deployed contract cannot be replaced by altered code at the same address.
 
 6. Receipt. Each record receives its own receipt. A receipt holds the chain identity, the contract address, the record kind, the algorithm, digest and salt, the inclusion path, the tree root and the anchoring transaction, block height, block identifier, block time and signer address. A receipt contains no part of the record.
 
@@ -55,7 +77,7 @@ The block time is set by the proposing validator in whole seconds. Validators re
 
 Receipts name the chain by its genesis hash. A receipt verifies only against the chain on which it was created, and a relaunched network with a new genesis cannot be used to verify it.
 
-This release targets the Quantova test network, and test network receipts carry no evidential weight. Production use follows the Quantova main network.
+This release targets the Quantova test network, and test network receipts carry no evidential weight. Production use will take place on the Quantova main network once it launches.
 
 ## Confidentiality of receipts
 
@@ -125,7 +147,7 @@ Receipts produced by an institution through its own deployment of a Qstamp contr
 
 ## Record kinds
 
-The kind is an unsigned 64 bit value recorded on the chain with each commitment. Named kinds are record 0, file 1, document 2, software release 3, AI model 4, AI dataset 5, AI agent action 6, AI output 7, wallet binding 8, financial record 9 and public record 10. Other values are available for private schemes.
+The kind is an unsigned 64 bit value recorded on the chain with each commitment. Named kinds are record 0, file 1, document 2, software release 3, AI model 4, AI dataset 5, AI agent action 6, AI output 7, wallet binding 8, financial record 9 and public record 10, where public record refers to records held by public bodies and does not mean that the record is published. Other values are available for private schemes.
 
 ## Independent verification procedure
 
