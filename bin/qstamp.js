@@ -11,13 +11,16 @@ const qstamp = require('..');
 const pkg = require('../package.json');
 
 const CLI_PENDING = 'qstamp-cli-pending/1';
+const MAX_RECEIPT_BYTES = 1024 * 1024;
+const MAX_PENDING_BYTES = 512 * 1024 * 1024;
+const RECEIPT_SUFFIX = '.qstamp.json';
 
 const USAGE = [
   'Qstamp ' + pkg.version,
   '',
   'qstamp hash <file...> [--alg sha3-256|sha256]',
   'qstamp stamp <file...> --seed-file <path> --index <n> [--kind <kind>] [--alg <alg>] [--rpc <url>] [--out <dir>] [--max-fee <quon>] [--force]',
-  'qstamp complete <pending.json> [--rpc <url>]',
+  'qstamp complete <pending.json> [--tx <id>] [--rpc <url>] [--force]',
   'qstamp verify <receipt.json> (--file <path> | --digest <hex>) [--rpc <url>]... [--json]',
   'qstamp kinds',
 ].join('\n');
@@ -25,12 +28,16 @@ const USAGE = [
 const FLAGS = {
   hash: { alg: 'value' },
   stamp: { 'seed-file': 'value', index: 'value', kind: 'value', alg: 'value', rpc: 'value', out: 'value', 'max-fee': 'value', network: 'value', force: 'bool' },
-  complete: { rpc: 'value' },
+  complete: { rpc: 'value', tx: 'value', force: 'bool' },
   verify: { file: 'value', digest: 'value', rpc: 'multi', json: 'bool' },
   kinds: {},
   help: {},
   version: {},
 };
+
+function safe(value) {
+  return String(value).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, ' ');
+}
 
 function usageError(message) {
   const e = new Error(message);
@@ -39,7 +46,7 @@ function usageError(message) {
 }
 
 function parse(command, argv) {
-  const allowed = FLAGS[command];
+  const allowed = Object.prototype.hasOwnProperty.call(FLAGS, command) ? FLAGS[command] : null;
   if (!allowed) throw usageError('unknown command ' + command + '\n\n' + USAGE);
   const positional = [];
   const flags = {};
@@ -76,15 +83,22 @@ function hexNibble(code) {
 
 function readSeed(file) {
   if (!file) throw usageError('a signing key file is required, pass --seed-file or set QSTAMP_SEED_FILE');
-  const st = fs.lstatSync(file);
-  if (!st.isFile()) throw usageError('the key file must be a regular file');
-  if (process.platform !== 'win32' && (st.mode & 0o077) !== 0) {
-    throw usageError('the key file ' + file + ' is readable by other users, restrict it with chmod 600');
+  const nofollow = fs.constants.O_NOFOLLOW || 0;
+  let fd;
+  try {
+    fd = fs.openSync(file, fs.constants.O_RDONLY | nofollow);
+  } catch (e) {
+    throw usageError(e.code === 'ELOOP' ? 'the key file must not be a symbolic link' : 'the key file ' + file + ' could not be opened');
   }
   const raw = Buffer.allocUnsafeSlow(130);
   const seed = new Uint8Array(32);
-  const fd = fs.openSync(file, 'r');
   try {
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) throw usageError('the key file must be a regular file');
+    if (process.platform !== 'win32') {
+      if ((st.mode & 0o077) !== 0) throw usageError('the key file ' + file + ' is readable by other users, restrict it with chmod 600');
+      if (typeof process.getuid === 'function' && st.uid !== process.getuid()) throw usageError('the key file ' + file + ' is not owned by the current user');
+    }
     const n = fs.readSync(fd, raw, 0, raw.length, 0);
     let end = n;
     while (end > 0 && (raw[end - 1] === 10 || raw[end - 1] === 13 || raw[end - 1] === 32)) end -= 1;
@@ -112,34 +126,72 @@ function wholeNumber(value, name) {
   return n;
 }
 
-function reserve(dest, force) {
-  let existing = null;
+function statOf(file) {
   try {
-    existing = fs.lstatSync(dest);
+    return fs.lstatSync(file);
   } catch (e) {
-    existing = null;
+    if (e.code === 'ENOENT') return null;
+    throw e;
   }
-  if (existing && existing.isSymbolicLink()) throw usageError('refusing to write a receipt through the symbolic link ' + dest);
-  if (existing && !force) throw usageError('a receipt already exists at ' + dest + ', pass --force to replace it');
-  fs.closeSync(fs.openSync(dest, existing ? 'w' : 'wx', 0o600));
-  return !existing;
 }
 
-function writeReceipt(dest, receipt) {
-  let st = null;
+function atomicWrite(dest, text) {
+  const tmp = path.join(path.dirname(dest), '.' + path.basename(dest) + '.' + crypto.randomBytes(6).toString('hex') + '.tmp');
+  const fd = fs.openSync(tmp, 'wx', 0o600);
   try {
-    st = fs.lstatSync(dest);
+    fs.fchmodSync(fd, 0o600);
+    fs.writeSync(fd, text);
+    fs.fsyncSync(fd);
   } catch (e) {
-    st = null;
+    fs.closeSync(fd);
+    fs.rmSync(tmp, { force: true });
+    throw e;
   }
+  fs.closeSync(fd);
+  try {
+    fs.renameSync(tmp, dest);
+  } catch (e) {
+    fs.rmSync(tmp, { force: true });
+    throw e;
+  }
+}
+
+function reserve(dest, force) {
+  const existing = statOf(dest);
+  if (existing && existing.isSymbolicLink()) throw usageError('refusing to write a receipt through the symbolic link ' + dest);
+  if (existing && !existing.isFile()) throw usageError('something other than a receipt already exists at ' + dest);
+  if (existing && !force) throw usageError('a receipt already exists at ' + dest + ', pass --force to replace it');
+  if (existing) return false;
+  fs.closeSync(fs.openSync(dest, 'wx', 0o600));
+  return true;
+}
+
+function writeReceipt(dest, receipt, replace) {
+  const st = statOf(dest);
   if (st && st.isSymbolicLink()) throw new Error('refusing to write a receipt through the symbolic link ' + dest);
-  fs.writeFileSync(dest, JSON.stringify(receipt, null, 2) + '\n', { mode: 0o600, flag: st ? 'w' : 'wx' });
-  fs.chmodSync(dest, 0o600);
+  if (st && !st.isFile()) throw new Error('something other than a receipt exists at ' + dest);
+  if (st && st.size > 0 && !replace) throw new Error('a file already exists at ' + dest + ' and was not replaced');
+  atomicWrite(dest, JSON.stringify(receipt, null, 2) + '\n');
 }
 
 function writePrivate(file, value) {
-  fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 });
-  fs.chmodSync(file, 0o600);
+  const st = statOf(file);
+  if (st && !st.isFile()) throw new Error('refusing to write the pending file through ' + file);
+  atomicWrite(file, JSON.stringify(value, null, 2) + '\n');
+}
+
+function readJson(file, maxBytes, what) {
+  const st = fs.statSync(file);
+  if (!st.isFile()) throw usageError('the ' + what + ' must be a regular file');
+  if (st.size > maxBytes) throw usageError('the ' + what + ' is larger than ' + maxBytes + ' bytes');
+  const text = fs.readFileSync(file, 'utf8');
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    const err = new Error('the ' + what + ' ' + file + ' is not valid JSON');
+    err.invalid = true;
+    throw err;
+  }
 }
 
 async function cmdHash(positional, flags) {
@@ -152,11 +204,11 @@ async function cmdHash(positional, flags) {
   return 0;
 }
 
-function saveReceipts(outputs, receipts) {
+function saveReceipts(outputs, receipts, replace) {
   const unwritten = [];
   receipts.forEach((r, i) => {
     try {
-      writeReceipt(outputs[i], r);
+      writeReceipt(outputs[i], r, replace);
       process.stdout.write('receipt ' + outputs[i] + '\n');
     } catch (e) {
       unwritten.push({ file: outputs[i], error: e.message, receipt: r });
@@ -174,7 +226,7 @@ async function cmdStamp(positional, flags) {
   const index = wholeNumber(flags.index, 'index');
   const alg = flags.alg || 'sha3-256';
   const outDir = flags.out;
-  const outputs = positional.map((file) => path.resolve(outDir || path.dirname(file), path.basename(file) + '.qstamp.json'));
+  const outputs = positional.map((file) => path.resolve(outDir || path.dirname(file), path.basename(file) + RECEIPT_SUFFIX));
   if (new Set(outputs).size !== outputs.length) throw usageError('two inputs would share one receipt name, stamp them separately or use --out');
   const records = [];
   for (const file of positional) records.push({ alg, digest: (await qstamp.digestFile(file, alg)).toString('hex'), salt: crypto.randomBytes(32).toString('hex') });
@@ -183,6 +235,7 @@ async function cmdStamp(positional, flags) {
   const created = [];
   const seed = readSeed(flags['seed-file'] || process.env.QSTAMP_SEED_FILE);
   let submitted = false;
+  let unconfirmed = false;
   try {
     for (const dest of outputs) if (reserve(dest, !!flags.force)) created.push(dest);
     writePrivate(pendingFile, { format: CLI_PENDING, outputs, records, pending: null });
@@ -200,18 +253,24 @@ async function cmdStamp(positional, flags) {
         process.stdout.write('submitted ' + pending.tx + '\n');
       },
     });
-    saveReceipts(outputs, receipts);
+    saveReceipts(outputs, receipts, !!flags.force);
     fs.unlinkSync(pendingFile);
     process.stdout.write('stamped ' + receipts.length + ' record(s) at height ' + receipts[0].anchor.height + ' in ' + receipts[0].anchor.tx + '\n');
     return 0;
   } catch (e) {
-    if (!submitted) {
+    if (!submitted && e.code === 'QSTAMP_UNCONFIRMED' && e.pending) {
+      unconfirmed = true;
+      writePrivate(pendingFile, { format: CLI_PENDING, outputs, records, pending: e.pending });
+      e.message += '\nthe network did not confirm whether the stamp was sent. ' + pendingFile + ' keeps the records and salts. '
+        + 'If a transaction from ' + e.pending.sender + ' to the stamp contract appears, run qstamp complete ' + pendingFile + ' --tx <transaction id>';
+    } else if (!submitted) {
       for (const dest of created) fs.rmSync(dest, { force: true });
       fs.rmSync(pendingFile, { force: true });
     } else {
       if (e.pending) writePrivate(pendingFile, { format: CLI_PENDING, outputs, records, pending: e.pending });
       e.message += '\nthe stamp was submitted, keep ' + pendingFile + ' and run qstamp complete ' + pendingFile;
     }
+    if (unconfirmed) for (const dest of created) fs.rmSync(dest, { force: true });
     throw e;
   } finally {
     seed.fill(0);
@@ -220,13 +279,28 @@ async function cmdStamp(positional, flags) {
 
 async function cmdComplete(positional, flags) {
   if (positional.length !== 1) throw usageError('name exactly one pending file');
-  const saved = JSON.parse(fs.readFileSync(positional[0], 'utf8'));
-  if (!saved || saved.format !== CLI_PENDING || !saved.pending || !Array.isArray(saved.outputs)) {
+  const saved = readJson(positional[0], MAX_PENDING_BYTES, 'pending file');
+  if (!saved || saved.format !== CLI_PENDING || !saved.pending || typeof saved.pending !== 'object' || !Array.isArray(saved.outputs)) {
     throw usageError('the file is not a submitted qstamp pending file');
   }
-  const receipts = await qstamp.complete(saved.pending, { rpc: flags.rpc });
-  if (receipts.length !== saved.outputs.length) throw new Error('the pending file is inconsistent');
-  saveReceipts(saved.outputs, receipts);
+  const outputs = saved.outputs.map((o) => {
+    if (typeof o !== 'string' || !path.isAbsolute(o)) throw usageError('the pending file names an invalid receipt path');
+    const base = path.basename(o);
+    if (!base.endsWith(RECEIPT_SUFFIX) || base.startsWith('.') || base.length <= RECEIPT_SUFFIX.length) {
+      throw usageError('the pending file names a receipt path that does not end in ' + RECEIPT_SUFFIX);
+    }
+    return path.normalize(o);
+  });
+  if (new Set(outputs).size !== outputs.length) throw usageError('the pending file names the same receipt twice');
+  const pending = Object.assign({}, saved.pending);
+  if (flags.tx !== undefined) {
+    if (!/^QTX1[0-9A-Z]{20,120}$/.test(flags.tx)) throw usageError('--tx must be a transaction id');
+    if (pending.tx && pending.tx !== flags.tx) throw usageError('the pending file already names a different transaction');
+    pending.tx = flags.tx;
+  }
+  const receipts = await qstamp.complete(pending, { rpc: flags.rpc });
+  if (receipts.length !== outputs.length) throw new Error('the pending file is inconsistent');
+  saveReceipts(outputs, receipts, !!flags.force);
   fs.unlinkSync(positional[0]);
   process.stdout.write('completed ' + receipts.length + ' receipt(s) at height ' + receipts[0].anchor.height + '\n');
   return 0;
@@ -235,15 +309,15 @@ async function cmdComplete(positional, flags) {
 async function cmdVerify(positional, flags) {
   if (positional.length !== 1) throw usageError('name exactly one receipt');
   if ((flags.file === undefined) === (flags.digest === undefined)) throw usageError('pass exactly one of --file or --digest so the record is checked');
-  const receipt = JSON.parse(fs.readFileSync(positional[0], 'utf8'));
+  const receipt = readJson(positional[0], MAX_RECEIPT_BYTES, 'receipt');
   const result = await qstamp.verify(receipt, { file: flags.file, digest: flags.digest, clients: flags.rpc });
   if (flags.json) {
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   } else {
-    for (const c of result.checks) process.stdout.write((c.ok ? 'pass ' : 'FAIL ') + c.name + '  ' + c.detail + '\n');
+    for (const c of result.checks) process.stdout.write((c.ok ? 'pass ' : 'FAIL ') + safe(c.name) + '  ' + safe(c.detail) + '\n');
     const chain = receipt && receipt.chain && typeof receipt.chain.id === 'string' ? receipt.chain.id : 'unknown';
     process.stdout.write('chain ' + chain + '\n');
-    process.stdout.write('endpoints ' + (result.endpoints.join(', ') || 'none') + '\n');
+    process.stdout.write('endpoints ' + (safe(result.endpoints.join(', ')) || 'none') + '\n');
     if (!result.officialEndpoints) process.stdout.write('notice  chain data came from an endpoint that is not the official one for this network\n');
     if (chain === qstamp.NETWORKS.testnet.chainId) process.stdout.write('notice  this is a test network receipt and carries no evidential weight\n');
     if (result.status === 'valid') {
@@ -282,7 +356,7 @@ async function main() {
 main().then(
   (code) => process.exit(code),
   (e) => {
-    process.stderr.write('qstamp: ' + e.message + '\n');
-    process.exit(2);
+    process.stderr.write('qstamp: ' + String(e && e.message ? e.message : e).split('\n').map(safe).join('\n') + '\n');
+    process.exit(e && e.usage ? 64 : 1);
   },
 );

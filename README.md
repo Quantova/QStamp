@@ -67,7 +67,7 @@ A receipt holds the digest of its record and the salt of its leaf. Anyone who ho
 npm install @quantovainc/qstamp
 ```
 
-Node 20 or later is required. The only runtime dependency is `@quantovainc/qcore`, which provides post quantum transaction signing.
+Node 20 or later is required. The only runtime dependency is `@quantovainc/qcore`, which provides post quantum transaction signing. The commands below assume the package is installed in the current project. Outside a project, run the tool as `npx @quantovainc/qstamp` so that the scoped package published by Quantova Inc is the one that runs.
 
 ## Command line use
 
@@ -83,9 +83,9 @@ Stamp one or more files in a single transaction. The key file holds a 32 byte se
 qstamp stamp report.pdf ledger.csv --seed-file ./signer.key --index 0 --kind financial_record
 ```
 
-Each file receives a receipt named after it with the suffix `.qstamp.json`. Every receipt file is reserved before anything is signed, so a stamp is never paid for without a place to record it. Two inputs that would share one receipt name are refused, and receipts are never written through a symbolic link.
+Each file receives a receipt named after it with the suffix `.qstamp.json`. Every receipt file is reserved before anything is signed, so a stamp is never paid for without a place to record it. Two inputs that would share one receipt name are refused, and receipts are never written through a symbolic link. Every receipt and pending file is written to a new private file and then moved into place, so an existing receipt replaced with `--force` stays intact until its replacement is complete. The `complete` command writes only files whose names end in `.qstamp.json` and never replaces an existing receipt unless `--force` is given.
 
-If the transaction is accepted but its outcome cannot be confirmed, the tool keeps a private pending file and names it. The receipts are then recovered with the following command.
+If the transaction is accepted but its outcome cannot be confirmed, the tool keeps a private pending file and names it. The pending file also holds the records and salts when the network fails during submission, so that no stamp is ever lost. The receipts are then recovered with the following command, adding `--tx` with the transaction id when the pending file does not yet name one.
 
 ```
 qstamp complete qstamp-pending-1760000000000-a1b2c3d4.json
@@ -97,7 +97,7 @@ Verify a receipt against its record. Verification requires the record or its dig
 qstamp verify report.pdf.qstamp.json --file report.pdf --rpc https://rpc-testnet.quantova.org
 ```
 
-The command exits with status 0 when the receipt is valid, 1 when it is invalid and 2 when it could not be evaluated, for example because no endpoint could be reached. An unreachable endpoint never produces a valid result. Unknown or misspelt options are refused before any action is taken.
+The command exits with status 0 when the receipt is valid, 1 when it is invalid or cannot be read and 2 only when it could not be evaluated, for example because no endpoint could be reached. Usage errors exit with status 64. An unreachable endpoint never produces a valid result. Unknown or misspelt options are refused before any action is taken. Text received from an endpoint is stripped of control characters before it is shown, and an endpoint listed twice is consulted once.
 
 ## Programmatic use
 
@@ -119,7 +119,7 @@ The seed must be supplied as a `Uint8Array` of 32 bytes so that the caller can w
 
 The `verify` result reports a status of valid, invalid or indeterminate, lists every check with its outcome and reason, states whether the record itself was checked and names the endpoints consulted. A receipt is never reported valid unless the record or its digest was supplied and matched.
 
-Every error raised after the transaction is accepted carries the pending batch in a plain form that can be stored. `complete` finishes the receipts from that pending batch once the transaction is final. The `onPending` option receives the pending batch before the SDK waits for finality, so that an application can store it first.
+Every error raised after the transaction is accepted carries the pending batch in a plain form that can be stored. An error raised while the network was being contacted to submit the transaction carries the pending batch as well, with the code `QSTAMP_UNCONFIRMED` and no transaction id, so that its salts are never lost. `complete` finishes the receipts from that pending batch once the transaction is final. The `onPending` option receives the pending batch before the SDK waits for finality, so that an application can store it first.
 
 Receipts produced by an institution through its own deployment of a Qstamp contract template are verified by passing that contract address together with `trustCustomContract` set to true. Without that flag the verifier accepts only the official contract of each network.
 
