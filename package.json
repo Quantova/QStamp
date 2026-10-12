@@ -1,7 +1,7 @@
 {
   "name": "@quantovainc/qstamp",
-  "version": "0.1.4",
-  "description": "Post quantum time stamping for records, software, financial data and AI artefacts on the Quantova chain, with receipts any party can verify.",
+  "version": "0.1.5",
+  "description": "Post quantum time stamping for records, software, financial data and AI artefacts on the Quantova network, with receipts any party can verify.",
   "main": "index.js",
   "types": "index.d.ts",
   "exports": {

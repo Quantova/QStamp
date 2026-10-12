@@ -1,6 +1,6 @@
 # Qstamp
 
-Qstamp is a post quantum time stamping SDK for the Quantova chain. It produces evidence that a record existed in an exact form no later than a stated moment, and it lets any third party confirm that evidence without trusting the party that created it.
+Qstamp is a post quantum time stamping SDK for the Quantova network. It produces evidence that a record existed in an exact form no later than a stated moment, and it lets any third party confirm that evidence without trusting the party that created it.
 
 Qstamp proves records without disclosing them. The records stay private on the systems of the organisation that holds them. Only a salted cryptographic commitment is written to the chain, and no record content, prompt, personal data or payment detail is ever published.
 
@@ -30,7 +30,7 @@ Transparency in Qstamp therefore means that the proof can be inspected by anyone
 
 Almost every digital signature in use today relies on elliptic curve or RSA cryptography. A sufficiently capable quantum computer will be able to forge such signatures. From that point a forged signature and a genuine one become indistinguishable, unless the genuine record can be shown to have existed before the break.
 
-Qstamp provides that showing. Each anchored commitment is carried by a transaction signed with the Module Lattice Digital Signature Algorithm (FIPS 204, parameter set 65) and finalised by a validator committee that signs every block with the same algorithm. The Quantova chain has used these signatures from its first block, so the record of when a commitment was made does not depend on any primitive that a quantum computer is known to break.
+Qstamp provides that showing. Each anchored commitment is carried by a transaction signed with the Module Lattice Digital Signature Algorithm (FIPS 204, parameter set 65) and finalised by a validator committee that signs every block with the same algorithm. The Quantova network has used these signatures from its first block, so the record of when a commitment was made does not depend on any primitive that a quantum computer is known to break.
 
 Typical uses include financial and trading records, contracts and loan documents, regulatory filings, official registers, software releases, AI models and datasets, and records of decisions taken by AI systems.
 
@@ -44,7 +44,7 @@ Typical uses include financial and trading records, contracts and loan documents
 
 4. Commitment. The value written to the chain is the SHA3 hash of the byte 0x02, the domain label QSTAMP/ROOT/V1, the genesis hash of the chain, the contract address, the signer address, the record kind as an unsigned 64 bit big endian integer, the batch size as an unsigned 64 bit big endian integer and the tree root. Binding all of these means the batch cannot be replayed on another chain or contract, cannot be claimed by another signer who copies the commitment from a pending transaction, and cannot have its kind, size or record positions altered after anchoring.
 
-5. Anchoring. A single transaction calls the Qstamp contract with the commitment and a record kind, and nothing else about the batch is sent. The contract emits one event that holds the address of the signer, the commitment and the kind. The contract keeps no state, holds no funds and has no owner or upgrade path. The Quantova chain admits only contract code signed by its attested compiler, so the deployed contract cannot be replaced by altered code at the same address.
+5. Anchoring. A single transaction calls the Qstamp contract with the commitment and a record kind, and nothing else about the batch is sent. The contract emits one event that holds the address of the signer, the commitment and the kind. The contract keeps no state, holds no funds and has no owner or upgrade path. The Quantova network admits only contract code signed by its attested compiler, so the deployed contract cannot be replaced by altered code at the same address.
 
 6. Receipt. Each record receives its own receipt. A receipt holds the chain identity, the contract address, the record kind, the algorithm, digest and salt, the inclusion path, the tree root and the anchoring transaction, block height, block identifier, block time and signer address. A receipt contains no part of the record.
 
