@@ -77,7 +77,7 @@ The block time is set by the proposing validator in whole seconds. Validators re
 
 Receipts name the chain by its genesis hash. A receipt verifies only against the chain on which it was created, and a relaunched network with a new genesis cannot be used to verify it.
 
-This release targets the Quantova test network, and test network receipts carry no evidential weight. Production use will take place on the Quantova main network once it launches.
+This release runs on the live Quantova network. The native asset of the network is still in its test phase, which has no effect on the evidence a receipt carries, since that evidence rests on the commitment, the inclusion path and the finality of the block.
 
 ## Confidentiality of receipts
 
@@ -163,7 +163,7 @@ An auditor can verify a receipt without this SDK by following these steps.
 
 ## Network
 
-The Quantova test network is named `Q-test-net-1` with genesis hash `ca91e093bb8de33e90db52d7c89876597d14760703793ea7211929e73e613062`. The Qstamp contract on that network is at `Q1D6TZFRL203P3DFAFVUPZUHGUCM4EWGH6063XNS42VA5235RNQWXS7FXEWX`. The public endpoint is `https://rpc-testnet.quantova.org`.
+The live Quantova network is identified by the chain name `Q-test-net-1` and the genesis hash `ca91e093bb8de33e90db52d7c89876597d14760703793ea7211929e73e613062`. The Qstamp contract on that network is at `Q1D6TZFRL203P3DFAFVUPZUHGUCM4EWGH6063XNS42VA5235RNQWXS7FXEWX`. The public endpoint is `https://rpc-testnet.quantova.org`. The chain name and the endpoint keep their original labels because every receipt is bound to the genesis hash and must continue to verify.
 
 ## Licence
 
