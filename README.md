@@ -71,9 +71,20 @@ When verification succeeds, the following statements hold.
 
 The checks on the record, the salt, the inclusion path and the commitment are performed locally and depend on no outside party.
 
-This release then confirms the anchoring transaction, the emitted event and the block through the chain RPC interface. The gateway does not yet serve finality certificates or inclusion proofs for ordinary blocks, so these facts cannot be checked against data an endpoint is unable to forge. Verification therefore asks every endpoint it is given and accepts the anchor only when at least two endpoints run by different operators answer and return identical chain data. Endpoints on the same host name count once, as do all loopback endpoints. With a single endpoint the result is indeterminate unless the caller sets trustSingleEndpoint to true, or passes --trust-single-endpoint, accepting that one dishonest endpoint could then invent an anchor. When the endpoints disagree the result is never valid. Stamping applies the same rule before it writes a receipt.
+The anchor itself is then confirmed in one of two ways, and a receipt is reported valid only when one of them succeeds.
 
-A later release will carry the block header, the validator finality certificate and the event inclusion proof inside each receipt. Verification will then need only the receipt, the record and the published validator set, with no network access and no trusted endpoint.
+1. Finality proof. The verifier asks the endpoints for the header of the anchoring block, the finality certificate of the validators and the inclusion proof of the stamp event under the event root of that header. It checks the certificate against the validator roster pinned in this release for the epoch of the block and requires signatures from validators holding more than two thirds of its stake. It then confirms that the proven event is exactly the stamp event of the receipt, with its contract, signer, kind, commitment and deadline. Because every step is checked cryptographically, such a proof holds even when every endpoint consulted is run by an attacker, and the result carries the trust value `finality-proof`. The verifier reads the header bytes and the certificate from `get_finality`, the event leaf and its path from `get_event_proof`, and refuses replies whose height, index, chain, header hash, event root or path length do not match. The checks use the proof functions `verifyFinality`, `verifyEvent` and `decodeEvent` of `@quantovainc/qcore` 0.5.2. While no roster is pinned for a network, or the block lies in an epoch whose roster is not pinned, the anchor stays unproven.
+2. Official quorum. The verifier consults the official endpoints of the network, each of which names the operator that runs it, and accepts the anchor when official endpoints of at least two different operators return identical chain data. The result then carries the trust value `official-quorum`.
+
+A receipt whose chain data matches what the consulted endpoints report, but which is proven in neither way, is reported with the status `unproven`. Its trust value is `single-endpoint` when the data came from endpoints of one operator and `custom-endpoints` when it came from endpoints the caller chose, and the result says in words which endpoints were relied upon. An unproven receipt is never reported valid, whatever options are set. While the network has one official endpoint and no pinned roster, every verification returns `unproven`, which is the honest result.
+
+By default the verifier consults only the official endpoints of the network. Endpoints chosen by the caller are consulted only when `trustCustomEndpoints` is true, or `--trust-custom-endpoints` is passed, and a result reached through them is at best unproven unless a finality proof succeeds. Client objects must name the endpoint they read in their `base` field and are never treated as official. Endpoints count as independent only when they share no resolved address, no registrable domain and no declared operator. Addresses written in different forms, such as an IPv4 address and its IPv4 mapped IPv6 form or a wildcard name such as one under nip.io that embeds an address, count as the same address. Caller supplied endpoints that resolve to loopback, private, link local or other special addresses are refused, loopback is allowed only with `allowLoopback` for local development, private addresses only for endpoints on `endpointAllowList`, and when `endpointAllowList` is given no other endpoint is used. The address check is repeated when each connection is opened. Error text sent by an endpoint is never shown, only a short code such as `http 500` or `timeout`.
+
+When one endpoint reports that the anchor does not match the chain and another reports that it does, the receipt is reported invalid and both endpoints are named. An endpoint that has not yet reached the height of the anchor is not taken as a denial.
+
+Before any endpoint is trusted, the verifier also rejects an anchor dated before the genesis of the chain, an anchor dated more than five minutes in the future, and an anchor whose height is higher than the chain can have reached by its time at the fastest block rate, or lower than the chain had certainly reached at the slowest rate allowed for in this release after a stall of one day.
+
+Stamping still accepts chain data only when at least two independent endpoints agree or `trustSingleEndpoint` is true. It may use endpoints chosen by the caller, subject to the same address checks, because every receipt it writes is checked again when it is verified.
 
 The block time is set by the proposing validator in whole seconds. Validators refuse a block whose time is more than 15 seconds ahead of their own clocks or earlier than its parent, so block time never decreases and a receipt time should be read as accurate to within about 15 seconds.
 
@@ -118,10 +129,12 @@ qstamp complete qstamp-pending-1760000000000-a1b2c3d4.json
 Verify a receipt against its record. Verification requires the record or its digest, and it may consult several endpoints.
 
 ```
-qstamp verify report.pdf.qstamp.json --file report.pdf --rpc https://rpc-testnet.quantova.org --rpc https://rpc.example.org
+qstamp verify report.pdf.qstamp.json --file report.pdf
 ```
 
-The command exits with status 0 when the receipt is valid, 1 when it is invalid or cannot be read and 2 only when it could not be evaluated, for example because no endpoint could be reached. Usage errors exit with status 64. An unreachable endpoint never produces a valid result. Unknown or misspelt options are refused before any action is taken. Text received from an endpoint is stripped of control characters before it is shown, and an endpoint listed twice is consulted once.
+Without `--rpc` the command consults the official endpoints of the network. Endpoints chosen by the operator of the verifier are added with `--rpc` and used only together with `--trust-custom-endpoints`. The option `--expect-sender` names the account that must have signed the anchor and may be given several times.
+
+The command exits with status 0 when the receipt is valid, 1 when it is invalid or cannot be read, 2 when it could not be evaluated, for example because no endpoint could be reached, and 3 when the receipt matches the chain data reported to it but is unproven. An unproven receipt is printed with a warning that it must not be relied upon as evidence. Usage errors exit with status 64. An unreachable endpoint never produces a valid result. Unknown or misspelt options are refused before any action is taken. Text received from an endpoint is stripped of control characters before it is shown, and an endpoint listed twice is consulted once.
 
 ## Programmatic use
 
@@ -138,18 +151,25 @@ const [receipt] = await qstamp.stamp({
   clients,
 });
 
-const result = await qstamp.verify(receipt, { file: 'report.pdf', clients });
+const result = await qstamp.verify(receipt, { file: 'report.pdf' });
+if (!qstamp.isProven(result)) {
+  throw new Error('the receipt is not proven, status ' + result.status);
+}
 ```
+
+Regulated users must require `isProven(result)` before relying on a receipt. It is true only for the status `valid` reached through a finality proof or an official quorum.
 
 The seed must be supplied as a `Uint8Array` of 32 bytes so that the caller can wipe it. Text seeds are refused because text cannot be erased from memory. The SDK signs from a private copy and overwrites that copy with zeros as soon as the transaction is signed. The underlying signing library also holds the seed briefly in its own memory, which cannot be wiped from JavaScript.
 
-The function chainTime returns the time of the finalised chain head read from the same endpoints. It refuses an endpoint whose head is more than two minutes behind the local clock or behind a chain time seen earlier in the process, and endpoints that disagree by more than that margin, so neither a wrong local clock nor a single endpoint can move a decision about expiry into the past.
+The function chainTime returns the time of the finalised chain head read from the same endpoints. It takes the latest reading, refuses an endpoint whose head is more than 30 seconds behind the local clock or behind a chain time seen earlier in the process, and refuses endpoints that disagree by more than that margin, so neither a wrong local clock nor a single endpoint can move a decision about expiry into the past. The margin can be changed with `clockSlackMs`. Endpoints chosen by the caller are used only with `trustCustomEndpoints`, and the result states in `trust` and `officialEndpoints` what it relied upon.
 
-The `verify` result reports a status of valid, invalid or indeterminate, lists every check with its outcome and reason, states whether the record itself was checked and names the endpoints consulted. A receipt is never reported valid unless the record or its digest was supplied and matched.
+The `verify` result reports a status of valid, invalid, indeterminate or unproven, the trust value and a sentence in `trustDetail` that says what was relied upon, whether the result is `proven`, whether every endpoint consulted was an official one in `officialEndpoints`, the operators consulted, any notices, and every check with its outcome and reason. A receipt is never reported valid unless the record or its digest was supplied and matched and the anchor was proven.
 
 Every error raised after the transaction is accepted carries the pending batch in a plain form that can be stored. An error raised while the network was being contacted to submit the transaction carries the pending batch as well, with the code `QSTAMP_UNCONFIRMED` and no transaction id, so that its salts are never lost. `complete` finishes the receipts from that pending batch once the transaction is final. The `onPending` option receives the pending batch before the SDK waits for finality, so that an application can store it first.
 
-Receipts produced by an institution through its own deployment of a Qstamp contract template are verified by passing that contract address together with `trustCustomContract` set to true. Without that flag the verifier accepts only the official contract of each network.
+Receipts produced by an institution through its own deployment of a Qstamp contract template are verified by passing that contract address together with `trustCustomContract` set to true. Without that flag the verifier accepts only the official contract of each network. For such contracts the verifier also reads the withdrawal state of the issuer template, and a commitment the issuer has withdrawn is reported invalid with its reason code in `revoked`. When the withdrawal state cannot be read the result is never valid.
+
+The record kind is chosen by whoever signs the anchor and is not checked by the open contract. A verifier must therefore confirm that the anchor was signed by an account entitled to issue records of that kind, either by passing `expectedSender` with that account or by checking `anchor.sender` in the receipt itself.
 
 ## Record kinds
 
@@ -163,13 +183,21 @@ An auditor can verify a receipt without this SDK by following these steps.
 2. Compute the leaf from the byte 0x00, the label QSTAMP/LEAF/V1, the algorithm identifier (1 for SHA3 with a 256 bit output and 2 for SHA2 with a 256 bit output), the digest and the salt.
 3. Recompute the tree root from the leaf, the position, the batch size and the inclusion path using the procedure of RFC 9162 section 2.1.3.2, and compare it with the receipt root.
 4. Compute the commitment from the byte 0x02, the label QSTAMP/ROOT/V1, the genesis hash, the contract address bytes, the signer address bytes, the kind, the batch size and the root.
-5. Query the chain for the anchoring transaction and confirm it is final, was signed by the stated address, was sent to the official contract at the stated height and block, and carries the commitment and kind in its call data.
-6. Query the events at that height and confirm the official contract emitted an event with selector 5a110849 whose data is the signer address, the commitment and the kind.
-7. Query the block at that height and confirm its identifier and time.
+5. Confirm that the anchor time is not before the genesis of the chain and not in the future, and that the height is consistent with the time.
+6. Obtain the header of the block at that height with its finality certificate, check the certificate against the validator roster of its epoch, and confirm that validators holding more than two thirds of the stake signed it and that the header time equals the receipt time.
+7. Obtain the inclusion proof of the stamp event under the event root of that header and confirm that the event is the one emitted by the official contract with selector 5a110849, whose data is the signer address, the commitment and the kind.
+8. Where no finality certificate can be checked, query endpoints run by at least two different operators for the anchoring transaction, the events at that height and the block, and confirm that they agree, that the transaction is final, was signed by the stated address, was sent to the official contract and carries the commitment and kind, and that the block identifier and time match.
+9. Confirm that the signer address is entitled to issue records of the stated kind.
 
 ## Network
 
-The live Quantova network is identified by the chain name `Q-test-net-1` and the genesis hash `ca91e093bb8de33e90db52d7c89876597d14760703793ea7211929e73e613062`. The Qstamp contract on that network is at `Q1D6TZFRL203P3DFAFVUPZUHGUCM4EWGH6063XNS42VA5235RNQWXS7FXEWX`. The public endpoint is `https://rpc-testnet.quantova.org`. The chain name and the endpoint keep their original labels because every receipt is bound to the genesis hash and must continue to verify.
+The live Quantova network is identified by the chain name `Q-test-net-1` and the genesis hash `ca91e093bb8de33e90db52d7c89876597d14760703793ea7211929e73e613062`. The Qstamp contract on that network is at `Q1D6TZFRL203P3DFAFVUPZUHGUCM4EWGH6063XNS42VA5235RNQWXS7FXEWX`. The public endpoint is `https://rpc-testnet.quantova.org`, operated by Quantova Inc. The chain name and the endpoint keep their original labels because every receipt is bound to the genesis hash and must continue to verify.
+
+Each network in `lib/networks.js` lists its official endpoints in `rpcs`, each with the url and the name of the operator that runs it. A second endpoint run by an independent operator is added as a further entry in that list, and verification then reaches the status valid through an official quorum. The validator rosters used for finality proofs are pinned per epoch in the `finality.rosters` entry of the same file, which is empty until a roster is published, and `finality.epochBlocks` fixes the epoch length once it is final.
+
+## Contract
+
+The source of the open contract is `contract/QStamp.qs`, and the package ships the container compiled from it as `contract/QStamp.qbc` together with its SHA256 hash in `contract/QStamp.qbc.sha256` and the interface the compiler emits for it in `contract/QStamp.interface.json`. The compiler lays out the arguments of each entry in their declared order, and the SDK reads the selector, offset and width of every argument from that interface rather than from fixed numbers. The interfaces of the issuer and council templates are shipped in `contract/templates` and are used in the same way to locate the commitment in calls to those contracts. Running `bash scripts/build-contract.sh` builds the Quanta compiler at commit `ccdf4c20b167daf2b60a87267c1e12557738d354`, compiles the source without a provenance key and confirms that the container and its interface equal the shipped files byte for byte. With `QSTAMP_TEMPLATES_DIR` set to a checkout of the Qstamp templates, it also confirms the template interfaces. A container deployed on chain is the canonical container followed by the provenance signature of the attested compiler, so a deployment is tied to this source by comparing its canonical part with `contract/QStamp.qbc`.
 
 ## Licence
 

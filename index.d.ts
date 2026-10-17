@@ -35,7 +35,7 @@ export interface PendingStamp {
 }
 
 export interface QstampError extends Error {
-  code?: 'QSTAMP_PENDING' | 'QSTAMP_NOT_RECORDED' | 'QSTAMP_UNCONFIRMED' | 'QSTAMP_DISAGREEMENT' | 'QSTAMP_CHAIN_TIME';
+  code?: 'QSTAMP_PENDING' | 'QSTAMP_NOT_RECORDED' | 'QSTAMP_UNCONFIRMED' | 'QSTAMP_DISAGREEMENT' | 'QSTAMP_CHAIN_TIME' | 'QSTAMP_TRANSPORT';
   pending?: PendingStamp;
 }
 
@@ -44,6 +44,9 @@ export interface EndpointOptions {
   client?: unknown;
   clients?: Array<string | unknown>;
   trustSingleEndpoint?: boolean;
+  trustCustomEndpoints?: boolean;
+  allowLoopback?: boolean;
+  endpointAllowList?: string[];
 }
 
 export interface StampOptions extends EndpointOptions {
@@ -65,6 +68,7 @@ export interface VerifyOptions extends EndpointOptions {
   digest?: Bytes32;
   contract?: string;
   trustCustomContract?: boolean;
+  expectedSender?: string | string[];
 }
 
 export interface VerifyCheck {
@@ -74,21 +78,44 @@ export interface VerifyCheck {
   transport: boolean;
 }
 
+export type VerifyTrust = 'finality-proof' | 'official-quorum' | 'single-endpoint' | 'custom-endpoints' | 'none';
+
 export interface VerifyResult {
   valid: boolean;
-  status: 'valid' | 'invalid' | 'indeterminate';
+  status: 'valid' | 'invalid' | 'indeterminate' | 'unproven';
+  proven: boolean;
+  trust: VerifyTrust;
+  trustDetail: string;
+  revoked: null | false | { reason: string };
   contentChecked: boolean;
   endpoints: string[];
   officialEndpoints: boolean;
+  operators: string[];
+  notices: string[];
   checks: VerifyCheck[];
+}
+
+export interface NetworkEndpoint {
+  url: string;
+  operator: string;
+}
+
+export interface RosterMember {
+  id: number;
+  stake: string;
+  attest_pk: string;
 }
 
 export interface Network {
   name: string;
   rpc: string;
+  rpcs: ReadonlyArray<NetworkEndpoint>;
   chainId: string;
   genesis: string;
   contract: string;
+  genesisTime: number;
+  blocks: { minPerSecond: number; maxPerSecond: number; stallSeconds: number; slack: number };
+  finality: { epochBlocks: number | null; rosters: Readonly<Record<string, ReadonlyArray<RosterMember>>> };
 }
 
 export interface CommitmentContext {
@@ -111,11 +138,14 @@ export interface ChainTime {
   late: number;
   height: number;
   endpoints: string[];
+  officialEndpoints: boolean;
+  trust: 'official-quorum' | 'single-endpoint' | 'custom-endpoints';
 }
 
 export function complete(pending: PendingStamp, options?: EndpointOptions & { timeoutMs?: number }): Promise<Receipt[]>;
 export function chainTime(options?: ChainTimeOptions): Promise<ChainTime>;
 export function verify(receipt: unknown, options?: VerifyOptions): Promise<VerifyResult>;
+export function isProven(result: unknown): boolean;
 export function prepare(records: StampRecord[]): { recs: Array<{ alg: DigestAlgorithm; digest: Buffer; salt: Buffer }>; root: Buffer; paths: Buffer[][] };
 export function digestBytes(bytes: Uint8Array, alg?: DigestAlgorithm): Buffer;
 export function digestFile(path: string, alg?: DigestAlgorithm): Promise<Buffer>;

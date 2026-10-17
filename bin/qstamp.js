@@ -19,20 +19,22 @@ const USAGE = [
   'Qstamp ' + pkg.version,
   '',
   'qstamp hash <file...> [--alg sha3-256|sha256]',
-  'qstamp stamp <file...> --seed-file <path> --index <n> [--kind <kind>] [--alg <alg>] [--rpc <url>]... [--trust-single-endpoint] [--out <dir>] [--max-fee <quon>] [--force]',
-  'qstamp complete <pending.json> [--tx <id>] [--rpc <url>]... [--trust-single-endpoint] [--force]',
-  'qstamp verify <receipt.json> (--file <path> | --digest <hex>) [--rpc <url>]... [--trust-single-endpoint] [--json]',
-  '',
-  'Chain data is accepted only when at least two independent endpoints agree, pass --rpc once for each.',
-  'Use --trust-single-endpoint to rely on one endpoint, which can then invent chain data alone.',
+  'qstamp stamp <file...> --seed-file <path> --index <n> [--kind <kind>] [--alg <alg>] [--rpc <url>]... [--trust-single-endpoint] [--allow-endpoint <host>]... [--allow-loopback] [--out <dir>] [--max-fee <quon>] [--force]',
+  'qstamp complete <pending.json> [--tx <id>] [--rpc <url>]... [--trust-single-endpoint] [--allow-endpoint <host>]... [--allow-loopback] [--force]',
+  'qstamp verify <receipt.json> (--file <path> | --digest <hex>) [--expect-sender <address>]... [--rpc <url>]... [--trust-custom-endpoints] [--allow-endpoint <host>]... [--allow-loopback] [--json]',
   'qstamp kinds',
+  '',
+  'A receipt is reported VALID only when its anchor is proven, by a finality certificate of the validators or by official endpoints of two different operators.',
+  'A receipt confirmed only by one operator or by endpoints you chose is reported UNPROVEN and exits with status 3.',
+  'Endpoints other than the official ones are consulted by verify only with --trust-custom-endpoints.',
+  'Stamping accepts chain data only when at least two independent endpoints agree, or with --trust-single-endpoint.',
 ].join('\n');
 
 const FLAGS = {
   hash: { alg: 'value' },
-  stamp: { 'seed-file': 'value', index: 'value', kind: 'value', alg: 'value', rpc: 'multi', 'trust-single-endpoint': 'bool', out: 'value', 'max-fee': 'value', network: 'value', force: 'bool' },
-  complete: { rpc: 'multi', 'trust-single-endpoint': 'bool', tx: 'value', force: 'bool' },
-  verify: { file: 'value', digest: 'value', rpc: 'multi', 'trust-single-endpoint': 'bool', json: 'bool' },
+  stamp: { 'seed-file': 'value', index: 'value', kind: 'value', alg: 'value', rpc: 'multi', 'trust-single-endpoint': 'bool', 'allow-endpoint': 'multi', 'allow-loopback': 'bool', out: 'value', 'max-fee': 'value', network: 'value', force: 'bool' },
+  complete: { rpc: 'multi', 'trust-single-endpoint': 'bool', 'allow-endpoint': 'multi', 'allow-loopback': 'bool', tx: 'value', force: 'bool' },
+  verify: { file: 'value', digest: 'value', 'expect-sender': 'multi', rpc: 'multi', 'trust-single-endpoint': 'bool', 'trust-custom-endpoints': 'bool', 'allow-endpoint': 'multi', 'allow-loopback': 'bool', json: 'bool' },
   kinds: {},
   help: {},
   version: {},
@@ -75,6 +77,14 @@ function parse(command, argv) {
     else flags[name] = value;
   }
   return { positional, flags };
+}
+
+function endpointOptions(flags) {
+  const out = { clients: flags.rpc, trustSingleEndpoint: !!flags['trust-single-endpoint'] };
+  if (flags['allow-endpoint']) out.endpointAllowList = flags['allow-endpoint'];
+  if (flags['allow-loopback']) out.allowLoopback = true;
+  if (flags['trust-custom-endpoints']) out.trustCustomEndpoints = true;
+  return out;
 }
 
 function hexNibble(code) {
@@ -242,10 +252,8 @@ async function cmdStamp(positional, flags) {
   try {
     for (const dest of outputs) if (reserve(dest, !!flags.force)) created.push(dest);
     writePrivate(pendingFile, { format: CLI_PENDING, outputs, records, pending: null });
-    const receipts = await qstamp.stamp({
+    const receipts = await qstamp.stamp(Object.assign(endpointOptions(flags), {
       network: flags.network || 'testnet',
-      clients: flags.rpc,
-      trustSingleEndpoint: !!flags['trust-single-endpoint'],
       seed,
       index,
       kind: flags.kind || 'file',
@@ -256,7 +264,7 @@ async function cmdStamp(positional, flags) {
         writePrivate(pendingFile, { format: CLI_PENDING, outputs, records, pending });
         process.stdout.write('submitted ' + pending.tx + '\n');
       },
-    });
+    }));
     saveReceipts(outputs, receipts, !!flags.force);
     fs.unlinkSync(pendingFile);
     process.stdout.write('stamped ' + receipts.length + ' record(s) at height ' + receipts[0].anchor.height + ' in ' + receipts[0].anchor.tx + '\n');
@@ -302,7 +310,7 @@ async function cmdComplete(positional, flags) {
     if (pending.tx && pending.tx !== flags.tx) throw usageError('the pending file already names a different transaction');
     pending.tx = flags.tx;
   }
-  const receipts = await qstamp.complete(pending, { clients: flags.rpc, trustSingleEndpoint: !!flags['trust-single-endpoint'] });
+  const receipts = await qstamp.complete(pending, endpointOptions(flags));
   if (receipts.length !== outputs.length) throw new Error('the pending file is inconsistent');
   saveReceipts(outputs, receipts, !!flags.force);
   fs.unlinkSync(positional[0]);
@@ -314,26 +322,36 @@ async function cmdVerify(positional, flags) {
   if (positional.length !== 1) throw usageError('name exactly one receipt');
   if ((flags.file === undefined) === (flags.digest === undefined)) throw usageError('pass exactly one of --file or --digest so the record is checked');
   const receipt = readJson(positional[0], MAX_RECEIPT_BYTES, 'receipt');
-  const result = await qstamp.verify(receipt, { file: flags.file, digest: flags.digest, clients: flags.rpc, trustSingleEndpoint: !!flags['trust-single-endpoint'] });
+  const options = Object.assign(endpointOptions(flags), { file: flags.file, digest: flags.digest });
+  if (flags['expect-sender']) options.expectedSender = flags['expect-sender'];
+  const result = await qstamp.verify(receipt, options);
   if (flags.json) {
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   } else {
     for (const c of result.checks) process.stdout.write((c.ok ? 'pass ' : 'FAIL ') + safe(c.name) + '  ' + safe(c.detail) + '\n');
+    for (const n of result.notices || []) process.stdout.write('notice  ' + safe(n) + '\n');
     const chain = receipt && receipt.chain && typeof receipt.chain.id === 'string' ? receipt.chain.id : 'unknown';
-    process.stdout.write('chain ' + chain + '\n');
+    process.stdout.write('chain ' + safe(chain) + '\n');
     process.stdout.write('endpoints ' + (safe(result.endpoints.join(', ')) || 'none') + '\n');
-    if (!result.officialEndpoints) process.stdout.write('notice  chain data came from an endpoint that is not the official one for this network\n');
+    if (result.endpoints.length && !result.officialEndpoints) process.stdout.write('notice  chain data came from endpoints that are not the official ones for this network\n');
+    if (result.trust && result.trust !== 'none') process.stdout.write('trust ' + safe(result.trust) + '  ' + safe(result.trustDetail) + '\n');
+    if (result.revoked && result.revoked.reason) process.stdout.write('REVOKED  the issuer withdrew this record with reason code ' + safe(result.revoked.reason) + '\n');
     if (result.status === 'valid') {
       const t = new Date(receipt.anchor.time * 1000);
       const when = Number.isNaN(t.getTime()) ? String(receipt.anchor.time) : t.toISOString();
       process.stdout.write('VALID  stamped no later than ' + when + ' in block ' + receipt.anchor.height + ' by ' + receipt.anchor.sender + '\n');
+    } else if (result.status === 'unproven') {
+      process.stdout.write('WARNING  this receipt is NOT proven. The chain data came from ' + (result.trust === 'custom-endpoints' ? 'endpoints you chose' : 'a single operator') + ', which could have invented it. Do not rely on it as evidence.\n');
+      process.stdout.write('UNPROVEN  the anchor matches the endpoints consulted, but it was not proven by a finality certificate or by official endpoints of two different operators\n');
     } else if (result.status === 'indeterminate') {
-      process.stdout.write('INDETERMINATE  the chain could not be consulted or the endpoints did not agree, try again with independent endpoints\n');
+      process.stdout.write('INDETERMINATE  the chain could not be consulted, try again later\n');
     } else {
       process.stdout.write('INVALID\n');
     }
   }
-  return result.status === 'valid' ? 0 : result.status === 'indeterminate' ? 2 : 1;
+  if (result.status === 'valid') return 0;
+  if (result.status === 'unproven') return 3;
+  return result.status === 'indeterminate' ? 2 : 1;
 }
 
 async function main() {

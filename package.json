@@ -14,12 +14,18 @@
   "bin": {
     "qstamp": "bin/qstamp.js"
   },
+  "scripts": {
+    "lint": "node scripts/lint.js",
+    "test": "node --test test/*.test.js",
+    "contract": "bash scripts/build-contract.sh"
+  },
   "files": [
     "index.js",
     "index.d.ts",
     "lib/",
     "bin/",
     "contract/",
+    "scripts/build-contract.sh",
     "LICENSE-APACHE",
     "LICENSE-MIT",
     "NOTICE",
@@ -29,7 +35,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@quantovainc/qcore": "0.5.1"
+    "@quantovainc/qcore": "0.5.2"
   },
   "keywords": [
     "post-quantum",

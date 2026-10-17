@@ -6,7 +6,7 @@
 const { digestBytes, digestFile, ALGORITHMS } = require('./lib/hash');
 const { leafHash, rootFromPath, commitment, tree } = require('./lib/merkle');
 const { stamp, complete, prepare, PENDING_FORMAT } = require('./lib/stamp');
-const { verify } = require('./lib/verify');
+const { verify, isProven } = require('./lib/verify');
 const { FORMAT, KINDS, validate } = require('./lib/receipt');
 const { NETWORKS } = require('./lib/networks');
 const { chainTime } = require('./lib/endpoints');
@@ -15,6 +15,7 @@ module.exports = {
   stamp,
   complete,
   verify,
+  isProven,
   chainTime,
   prepare,
   digestBytes,
