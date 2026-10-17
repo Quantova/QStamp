@@ -4,6 +4,7 @@
 'use strict';
 
 const http = require('http');
+const https = require('https');
 const crypto = require('crypto');
 const { core } = require('@quantovainc/qcore');
 const wire = require('../lib/wire');
@@ -107,14 +108,20 @@ function makeChain(opts) {
     events: new Map(),
     blocks: new Map(),
     storage: new Map(),
+    nonces: new Map(),
     epoch: o.epoch === undefined ? 0 : o.epoch,
     certify: null,
   };
   function newBlock(t) {
     chain.height += 1;
     chain.time = t === undefined ? chain.time + 1 : t;
-    const id = encode('QBK', crypto.randomBytes(32));
-    chain.blocks.set(chain.height, { block: id, height: chain.height, time: chain.time });
+    const h = chain.height;
+    const entry = { height: h, time: chain.time };
+    Object.defineProperty(entry, 'block', {
+      enumerable: true,
+      get: () => encode('QBK', sha3(headerBytes(h, entry.time, merkleRoot(chain.leavesAt(h).map((l) => sha3(Buffer.from([0]), l)))))),
+    });
+    chain.blocks.set(h, entry);
     chain.events.set(chain.height, []);
     return chain.blocks.get(chain.height);
   }
@@ -144,7 +151,9 @@ function makeChain(opts) {
       eventSel = to === chain.contract ? wire.STAMPED_SELECTOR : chain.customSelector || wire.STAMPED_SELECTOR;
       data = wire.stampedEventData(from, anchored, kind);
     }
-    chain.txs.set(txId, { status: 'finalised', height: blk.height, block: blk.block, from, to, kind: 'call', raw: raw.toString('hex') });
+    const record = { status: 'finalised', height: blk.height, from, to, kind: 'call', raw: raw.toString('hex') };
+    Object.defineProperty(record, 'block', { enumerable: true, get: () => blk.block });
+    chain.txs.set(txId, record);
     if (ok) chain.events.get(blk.height).push({ contract: to, selector: eventSel, data });
     newBlock();
     return txId;
@@ -234,7 +243,13 @@ function client(chain, base, overrides) {
   c.call = async (seed, index, to, argsHex) => {
     if (o.call) return o.call(chain, seed, index, to, argsHex);
     const from = core.address(seed, index);
-    return { outcome: { verdict: 'accepted', tx_id: chain.submitCall(from, to, argsHex) } };
+    const nonce = chain.nonces.get(from) || 0;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    if ((chain.nonces.get(from) || 0) !== nonce) return { outcome: { verdict: 'rejected', reason: 'nonce ' + nonce + ' was already used' } };
+    chain.nonces.set(from, nonce + 1);
+    const txId = chain.submitCall(from, to, argsHex);
+    chain.txs.get(txId).nonce = nonce;
+    return { outcome: { verdict: 'accepted', tx_id: txId } };
   };
   return c;
 }
@@ -242,7 +257,7 @@ function client(chain, base, overrides) {
 function gateway(chain, overrides) {
   const handlers = api(chain, overrides);
   const o = overrides || {};
-  const server = http.createServer((req, res) => {
+  const handler = (req, res) => {
     const chunks = [];
     req.on('data', (c) => chunks.push(c));
     req.on('end', async () => {
@@ -276,11 +291,12 @@ function gateway(chain, overrides) {
         return send(500, { message: String(e.message) });
       }
     });
-  });
+  };
+  const server = o.tls ? https.createServer(o.tls, handler) : http.createServer(handler);
   return new Promise((resolve) => {
     server.listen(0, '127.0.0.1', () => {
       const { port } = server.address();
-      resolve({ url: 'http://127.0.0.1:' + port, port, close: () => new Promise((r) => server.close(r)) });
+      resolve({ url: (o.tls ? 'https' : 'http') + '://127.0.0.1:' + port, port, close: () => new Promise((r) => server.close(r)) });
     });
   });
 }

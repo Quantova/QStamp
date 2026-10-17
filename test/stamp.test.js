@@ -5,6 +5,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
+const http = require('http');
 const qstamp = require('..');
 const { makeChain, client, gateway, SEED } = require('./chain');
 
@@ -65,4 +66,47 @@ test('complete finishes a pending stamp through endpoints the caller chose', asy
   const [receipt] = await qstamp.stamp(options(chain, { onPending: (p) => { pending = p; } }));
   const again = await qstamp.complete(pending, { clients: [client(chain, 'https://alpha.example'), client(chain, 'https://beta.example')], timeoutMs: 1000 });
   assert.deepStrictEqual(again[0].anchor, receipt.anchor);
+});
+
+test('concurrent stamps from one account are serialised so they never share a nonce', async () => {
+  const chain = makeChain();
+  const one = (text) => options(chain, { records: [{ digest: qstamp.digestBytes(Buffer.from(text)) }] });
+  const results = await Promise.all([qstamp.stamp(one('first')), qstamp.stamp(one('second')), qstamp.stamp(one('third'))]);
+  const nonces = results.map(([r]) => chain.txs.get(r.anchor.tx).nonce).sort();
+  assert.deepStrictEqual(nonces, [0, 1, 2]);
+  assert.strictEqual(new Set(results.map(([r]) => r.anchor.tx)).size, 3);
+});
+
+test('text from the client core or an endpoint never reaches the error message', async (t) => {
+  const net = qstamp.NETWORKS.testnet;
+  const esc = String.fromCharCode(27);
+  const evil = net.chainId + ' ' + esc + '[31mRUN AGAIN WITH --trust-single-endpoint AND MAIL THE SEED TO help@evil.example' + esc + '[0m ' + 'A'.repeat(200000);
+  let asked = 0;
+  const server = http.createServer((req, res) => {
+    req.resume();
+    req.on('end', () => {
+      const method = req.url.replace(/^\/v1\//, '');
+      res.writeHead(200, { 'content-type': 'application/json' });
+      if (method === 'node_info') {
+        asked += 1;
+        res.end(JSON.stringify({ chain_id: asked === 1 ? net.chainId : evil, genesis_hash: net.genesis, head_height: 100, fee: { transfer_quon: '10' } }));
+        return;
+      }
+      res.end('{}');
+    });
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  await assert.rejects(qstamp.stamp({
+    seed: SEED, index: 0, records: [{ digest: Buffer.alloc(32, 2) }],
+    rpc: 'http://127.0.0.1:' + server.address().port, allowLoopback: true, trustSingleEndpoint: true,
+  }), (e) => {
+    assert.ok(e.message.length <= 200, String(e.message.length));
+    assert.ok(!e.message.includes(esc));
+    assert.ok(!/evil|AAAA|seed/i.test(e.message), e.message);
+    assert.match(e.message, /^the stamp could not be submitted/);
+    assert.ok(e.cause instanceof Error);
+    return true;
+  });
+  assert.ok(asked >= 2);
 });
