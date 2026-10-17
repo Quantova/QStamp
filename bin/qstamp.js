@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const qstamp = require('..');
+const { readRegular } = require('../lib/hash');
 const pkg = require('../package.json');
 
 const CLI_PENDING = 'qstamp-cli-pending/1';
@@ -97,9 +98,10 @@ function hexNibble(code) {
 function readSeed(file) {
   if (!file) throw usageError('a signing key file is required, pass --seed-file or set QSTAMP_SEED_FILE');
   const nofollow = fs.constants.O_NOFOLLOW || 0;
+  const nonblock = fs.constants.O_NONBLOCK || 0;
   let fd;
   try {
-    fd = fs.openSync(file, fs.constants.O_RDONLY | nofollow);
+    fd = fs.openSync(file, fs.constants.O_RDONLY | nofollow | nonblock);
   } catch (e) {
     throw usageError(e.code === 'ELOOP' ? 'the key file must not be a symbolic link' : 'the key file ' + file + ' could not be opened');
   }
@@ -193,17 +195,57 @@ function writePrivate(file, value) {
   atomicWrite(file, JSON.stringify(value, null, 2) + '\n');
 }
 
-function readJson(file, maxBytes, what) {
-  const st = fs.statSync(file);
-  if (!st.isFile()) throw usageError('the ' + what + ' must be a regular file');
-  if (st.size > maxBytes) throw usageError('the ' + what + ' is larger than ' + maxBytes + ' bytes');
-  const text = fs.readFileSync(file, 'utf8');
+function strictJson(text) {
+  const value = JSON.parse(text);
+  const stack = [];
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    const top = stack[stack.length - 1];
+    if (ch === '"') {
+      let j = i + 1;
+      while (text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+      if (top && top.keys && top.expectKey) {
+        const key = JSON.parse(text.slice(i, j + 1));
+        if (top.keys.has(key)) throw new Error('the JSON repeats the key ' + JSON.stringify(key));
+        top.keys.add(key);
+        top.expectKey = false;
+      }
+      i = j;
+    } else if (ch === '{') {
+      stack.push({ keys: new Set(), expectKey: true });
+    } else if (ch === '[') {
+      stack.push({ keys: null });
+    } else if (ch === '}' || ch === ']') {
+      stack.pop();
+    } else if (ch === ',' && top && top.keys) {
+      top.expectKey = true;
+    }
+  }
+  return value;
+}
+
+async function readJson(file, maxBytes, what, invalid) {
+  let bytes;
   try {
-    return JSON.parse(text);
+    bytes = await readRegular(file, maxBytes, what);
+  } catch (e) {
+    throw usageError(e && e.code === 'QSTAMP_FILE' ? e.message : 'the ' + what + ' ' + file + ' could not be read');
+  }
+  try {
+    return strictJson(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
   } catch (e) {
     const err = new Error('the ' + what + ' ' + file + ' is not valid JSON');
-    err.invalid = true;
+    if (invalid) err.invalid = true;
+    else err.usage = true;
     throw err;
+  }
+}
+
+async function digestOf(file, alg) {
+  try {
+    return await qstamp.digestFile(file, alg);
+  } catch (e) {
+    throw usageError(e && e.code === 'QSTAMP_FILE' ? e.message : 'the file ' + file + ' could not be read');
   }
 }
 
@@ -211,7 +253,8 @@ async function cmdHash(positional, flags) {
   if (positional.length === 0) throw usageError('name at least one file');
   const alg = flags.alg || 'sha3-256';
   for (const file of positional) {
-    const d = await qstamp.digestFile(file, alg);
+    if (!Object.prototype.hasOwnProperty.call(qstamp.ALGORITHMS, alg)) throw usageError('unsupported digest algorithm ' + alg);
+    const d = await digestOf(file, alg);
     process.stdout.write(d.toString('hex') + '  ' + file + '\n');
   }
   return 0;
@@ -242,7 +285,8 @@ async function cmdStamp(positional, flags) {
   const outputs = positional.map((file) => path.resolve(outDir || path.dirname(file), path.basename(file) + RECEIPT_SUFFIX));
   if (new Set(outputs).size !== outputs.length) throw usageError('two inputs would share one receipt name, stamp them separately or use --out');
   const records = [];
-  for (const file of positional) records.push({ alg, digest: (await qstamp.digestFile(file, alg)).toString('hex'), salt: crypto.randomBytes(32).toString('hex') });
+  if (!Object.prototype.hasOwnProperty.call(qstamp.ALGORITHMS, alg)) throw usageError('unsupported digest algorithm ' + alg);
+  for (const file of positional) records.push({ alg, digest: (await digestOf(file, alg)).toString('hex'), salt: crypto.randomBytes(32).toString('hex') });
   if (outDir) fs.mkdirSync(outDir, { recursive: true });
   const pendingFile = path.resolve(outDir || path.dirname(positional[0]), 'qstamp-pending-' + Date.now() + '-' + crypto.randomBytes(4).toString('hex') + '.json');
   const created = [];
@@ -291,7 +335,7 @@ async function cmdStamp(positional, flags) {
 
 async function cmdComplete(positional, flags) {
   if (positional.length !== 1) throw usageError('name exactly one pending file');
-  const saved = readJson(positional[0], MAX_PENDING_BYTES, 'pending file');
+  const saved = await readJson(positional[0], MAX_PENDING_BYTES, 'pending file', false);
   if (!saved || saved.format !== CLI_PENDING || !saved.pending || typeof saved.pending !== 'object' || !Array.isArray(saved.outputs)) {
     throw usageError('the file is not a submitted qstamp pending file');
   }
@@ -321,8 +365,13 @@ async function cmdComplete(positional, flags) {
 async function cmdVerify(positional, flags) {
   if (positional.length !== 1) throw usageError('name exactly one receipt');
   if ((flags.file === undefined) === (flags.digest === undefined)) throw usageError('pass exactly one of --file or --digest so the record is checked');
-  const receipt = readJson(positional[0], MAX_RECEIPT_BYTES, 'receipt');
-  const options = Object.assign(endpointOptions(flags), { file: flags.file, digest: flags.digest });
+  const receipt = await readJson(positional[0], MAX_RECEIPT_BYTES, 'receipt', true);
+  const options = Object.assign(endpointOptions(flags), { digest: flags.digest });
+  if (flags.file !== undefined) {
+    const alg = receipt && receipt.record && typeof receipt.record.alg === 'string' ? receipt.record.alg : null;
+    if (alg !== null && Object.prototype.hasOwnProperty.call(qstamp.ALGORITHMS, alg)) options.digest = (await digestOf(flags.file, alg)).toString('hex');
+    else options.file = flags.file;
+  }
   if (flags['expect-sender']) options.expectedSender = flags['expect-sender'];
   const result = await qstamp.verify(receipt, options);
   if (flags.json) {
@@ -344,7 +393,7 @@ async function cmdVerify(positional, flags) {
       process.stdout.write('WARNING  this receipt is NOT proven. The chain data came from ' + (result.trust === 'custom-endpoints' ? 'endpoints you chose' : 'a single operator') + ', which could have invented it. Do not rely on it as evidence.\n');
       process.stdout.write('UNPROVEN  the anchor matches the endpoints consulted, but it was not proven by a finality certificate or by official endpoints of two different operators\n');
     } else if (result.status === 'indeterminate') {
-      process.stdout.write('INDETERMINATE  the chain could not be consulted, try again later\n');
+      process.stdout.write('INDETERMINATE  the anchor could be neither confirmed nor refuted, see the checks above and try again later\n');
     } else {
       process.stdout.write('INVALID\n');
     }
@@ -378,6 +427,6 @@ main().then(
   (code) => process.exit(code),
   (e) => {
     process.stderr.write('qstamp: ' + String(e && e.message ? e.message : e).split('\n').map(safe).join('\n') + '\n');
-    process.exit(e && e.usage ? 64 : 1);
+    process.exit(e && e.invalid ? 1 : 64);
   },
 );
