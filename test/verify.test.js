@@ -74,29 +74,45 @@ test('two host names of one operator count as one operator', async () => {
   assert.match(r.checks.find((c) => c.name === 'endpoints').detail, /run by 1 operator/);
 });
 
-test('a definite negative from one endpoint against a positive from another is invalid and names both', async () => {
+test('a definite negative from one endpoint against a positive from another is indeterminate and names both', async () => {
   const chain = makeChain();
   const record = Buffer.from('a payroll run');
   const receipt = await stamped(chain, record);
-  const honest = client(chain, 'https://honest.example', { transaction: () => ({ status: 'unknown' }), events: () => ({ events: [] }) });
-  const liar = client(chain, 'https://liar.example');
-  const r = await qstamp.verify(receipt, { bytes: record, clients: [honest, liar], trustCustomEndpoints: true });
-  assert.strictEqual(r.status, 'invalid');
+  const denies = { transaction: () => ({ status: 'unknown' }), events: () => ({ events: [] }) };
+  const denier = client(chain, 'https://denier.example', denies);
+  const confirmer = client(chain, 'https://confirmer.example');
+  const r = await qstamp.verify(receipt, { bytes: record, clients: [denier, confirmer], trustCustomEndpoints: true });
+  assert.strictEqual(r.status, 'indeterminate');
+  assert.strictEqual(qstamp.isProven(r), false);
   const agreement = r.checks.find((c) => c.name === 'agreement');
   assert.strictEqual(agreement.ok, false);
-  assert.strictEqual(agreement.transport, false);
-  assert.match(agreement.detail, /honest\.example/);
-  assert.match(agreement.detail, /liar\.example/);
+  assert.match(agreement.detail, /denier\.example/);
+  assert.match(agreement.detail, /confirmer\.example/);
+  const both = await qstamp.verify(receipt, { bytes: record, clients: [denier, client(chain, 'https://other.example', denies)], trustCustomEndpoints: true });
+  assert.strictEqual(both.status, 'invalid');
 });
 
-test('positive endpoints that disagree on the chain data are invalid', async () => {
+test('positive endpoints that disagree on the chain data are indeterminate', async () => {
   const chain = makeChain();
   const record = Buffer.from('a shipment');
   const receipt = await stamped(chain, record);
   const odd = client(chain, 'https://odd.example', { transaction: (c, id) => Object.assign({}, c.txs.get(id), { raw: c.txs.get(id).raw + '00' }) });
   const r = await qstamp.verify(receipt, { bytes: record, clients: [client(chain, 'https://even.example'), odd], trustCustomEndpoints: true });
-  assert.strictEqual(r.status, 'invalid');
+  assert.strictEqual(r.status, 'indeterminate');
   assert.strictEqual(r.checks.find((c) => c.name === 'agreement').ok, false);
+});
+
+test('a receipt whose algorithm is not a string is invalid and verify never throws on it', async () => {
+  const chain = makeChain();
+  const record = Buffer.from('an odd algorithm');
+  const receipt = await stamped(chain, record);
+  for (const alg of [['sha3-256'], { toString: () => 'sha3-256' }, 1, null]) {
+    const bent = JSON.parse(JSON.stringify(receipt));
+    bent.record.alg = alg;
+    assert.throws(() => qstamp.validateReceipt(JSON.parse(JSON.stringify(bent))), /record\.alg/);
+    const r = await qstamp.verify(bent, { bytes: record, clients: [client(chain, 'https://alpha.example')], trustCustomEndpoints: true });
+    assert.strictEqual(r.status, 'invalid');
+  }
 });
 
 test('an endpoint that has not reached the anchor height is not taken as a denial', async () => {
@@ -265,15 +281,26 @@ test('a commitment withdrawn by the issuer is never valid and the result reports
   assert.strictEqual(after.checks.find((c) => c.name.startsWith('revocation')).ok, false);
 });
 
-test('the withdrawal state of an earlier issuer layout is read from its own map', async (t) => {
+test('a stamp recorded with the open event layout, as the council template does, reports withdrawal as not applicable', async (t) => {
   const chain = makeChain();
   const contract = core.address(new Uint8Array(32).fill(4), 2);
   const record = Buffer.from('a permit');
-  const { receipt, anchored } = customAnchor(chain, contract, record, wire.STAMPED_SELECTOR);
-  chain.revoke(contract, REVOCATION_TAGS[wire.STAMPED_SELECTOR], anchored.toString('hex'), 3);
-  const r = await qstamp.verify(receipt, { bytes: record, contract, trustCustomContract: true, clients: [client(chain, 'https://alpha.example')], trustCustomEndpoints: true });
-  assert.strictEqual(r.status, 'invalid');
-  assert.deepStrictEqual(r.revoked, { reason: '3' });
+  const { receipt } = customAnchor(chain, contract, record, wire.STAMPED_SELECTOR);
+  assert.strictEqual(REVOCATION_TAGS[wire.STAMPED_SELECTOR], undefined);
+  let reads = 0;
+  const watch = (c, base) => Object.assign(client(c, base), { storageAt: async () => { reads += 1; return { slots: [] }; } });
+  const r = await qstamp.verify(receipt, { bytes: record, contract, trustCustomContract: true, clients: [watch(chain, 'https://alpha.example')], trustCustomEndpoints: true });
+  assert.strictEqual(r.status, 'unproven');
+  assert.strictEqual(r.revoked, null);
+  assert.strictEqual(reads, 0);
+  assert.match(r.checks.find((c) => c.name === 'revocation').detail, /does not apply/);
+  const one = await gateway(chain);
+  const two = await gateway(chain);
+  t.after(() => Promise.all([one.close(), two.close()]));
+  const official = testNetwork({ rpcs: [{ url: one.url, operator: 'Operator One' }, { url: 'http://localhost:' + two.port, operator: 'Operator Two' }] });
+  const quorum = await verifyWith(official, receipt, { bytes: record, contract, trustCustomContract: true }, null);
+  assert.strictEqual(quorum.status, 'valid');
+  assert.strictEqual(quorum.revoked, null);
 });
 
 test('a custom contract receipt cannot be valid when the withdrawal state cannot be read', async () => {

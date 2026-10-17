@@ -70,7 +70,7 @@ const stubHelpers = {
       if (sig !== sign(member.attest_pk, hash, chainId)) throw new Error('an attestation signature does not verify');
       signed += BigInt(member.stake);
     }
-    if (signed * 3n <= total * 2n) throw new Error('the attesting validators hold two thirds of the stake or less');
+    if (signed * 3n < total * 2n) throw new Error('the attesting validators hold less than two thirds of the stake');
     return JSON.stringify({
       height: String(header.height), hash, event_root: header.eventRoot.toString('hex'), time: String(header.time),
       signed_stake: String(signed), total_stake: String(total),
@@ -83,7 +83,7 @@ const stubHelpers = {
   chainId: () => CHAIN_ID,
 };
 
-const pinned = testNetwork({ finality: { epochBlocks: null, rosters: { 0: ROSTER } } });
+const pinned = testNetwork({ finality: { epochBlocks: 2 ** 40, rosters: { 0: ROSTER } } });
 
 async function stamped(chain, record) {
   const [receipt] = await qstamp.stamp({
@@ -265,7 +265,7 @@ test('a certificate from keys outside the pinned roster does not prove a fabrica
   }
 });
 
-test('no more than two thirds of the stake never proves an anchor, even when a helper returns without error', async () => {
+test('less than two thirds of the stake never proves an anchor, even when a helper returns without error', async () => {
   const chain = makeChain();
   chain.certify = certificate([2, 3]);
   const record = Buffer.from('a thin quorum');
@@ -282,17 +282,103 @@ test('no more than two thirds of the stake never proves an anchor, even when a h
   });
   const r = await verifyWith(pinned, receipt, opts, { helpers: lax });
   assert.strictEqual(r.status, 'unproven');
-  assert.ok(r.notices.some((n) => /no more than two thirds/.test(n)));
+  assert.ok(r.notices.some((n) => /less than two thirds/.test(n)));
+  const inflated = Object.assign({}, stubHelpers, {
+    finality(chainId, headerHex, certHex) {
+      const bytes = Buffer.from(headerHex, 'hex');
+      const header = F.decodeHeader(bytes);
+      return JSON.stringify({ height: String(header.height), hash: sha3(bytes).toString('hex'), event_root: header.eventRoot.toString('hex'), time: String(header.time), signed_stake: '60', total_stake: '90' });
+    },
+  });
+  const shrunk = await verifyWith(pinned, receipt, opts, { helpers: inflated });
+  assert.strictEqual(shrunk.status, 'unproven');
+});
+
+test('signatures from exactly two thirds of the stake prove an anchor, as the chain accepts', async () => {
+  const thirds = [
+    { id: 1, stake: '10', attest_pk: 'a1'.repeat(16) },
+    { id: 2, stake: '10', attest_pk: 'b2'.repeat(16) },
+    { id: 3, stake: '10', attest_pk: 'c3'.repeat(16) },
+  ];
+  const net = testNetwork({ finality: { epochBlocks: 2 ** 40, rosters: { 0: thirds } } });
+  const chain = makeChain();
+  chain.certify = certificate([1, 2], (id) => thirds.find((m) => m.id === id).attest_pk);
+  const record = Buffer.from('exactly two thirds');
+  const receipt = await stamped(chain, record);
+  const r = await verifyWith(net, receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.strictEqual(r.status, 'valid');
+  assert.strictEqual(r.trust, 'finality-proof');
+  assert.match(r.checks.find((c) => c.name === 'finality').detail, /20 of 30 pinned stake/);
+  chain.certify = certificate([1], (id) => thirds.find((m) => m.id === id).attest_pk);
+  const lone = Buffer.from('one third');
+  const fewer = await stamped(chain, lone);
+  const r2 = await verifyWith(net, fewer, { bytes: lone, clients: only(chain), trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.strictEqual(r2.status, 'unproven');
 });
 
 test('an anchor in an epoch whose roster is not pinned stays unproven', async () => {
-  const chain = makeChain({ epoch: 4 });
+  const chain = makeChain({ epoch: 0 });
   chain.certify = certificate([1, 2, 3]);
   const record = Buffer.from('a later epoch');
   const receipt = await stamped(chain, record);
-  const r = await verifyWith(pinned, receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: stubHelpers });
+  const later = testNetwork({ finality: { epochBlocks: 2 ** 40, rosters: { 4: ROSTER } } });
+  const r = await verifyWith(later, receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: stubHelpers });
   assert.strictEqual(r.status, 'unproven');
-  assert.match(r.checks.find((c) => c.name === 'proof').detail, /epoch 4, whose validator roster this release does not pin/);
+  assert.match(r.checks.find((c) => c.name === 'proof').detail, /epoch 0, whose validator roster this release does not pin/);
+});
+
+test('pinned rosters without a pinned epoch length never let an endpoint choose the roster', async () => {
+  const chain = makeChain({ epoch: 0 });
+  chain.certify = certificate([1, 2, 3]);
+  const record = Buffer.from('an endpoint chosen epoch');
+  const receipt = await stamped(chain, record);
+  const loose = testNetwork({ finality: { epochBlocks: null, rosters: { 0: ROSTER } } });
+  const r = await verifyWith(loose, receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.strictEqual(r.status, 'unproven');
+  assert.match(r.checks.find((c) => c.name === 'proof').detail, /not the epoch length/);
+});
+
+test('a proven anchor binds the block named in the receipt and needs its transaction confirmed', async () => {
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const record = Buffer.from('a bound block');
+  const receipt = await stamped(chain, record);
+  const opts = { bytes: record, clients: only(chain), trustCustomEndpoints: true };
+  const otherBlock = JSON.parse(JSON.stringify(receipt));
+  otherBlock.anchor.block = chain.blocks.get(receipt.anchor.height - 1).block;
+  const moved = await verifyWith(pinned, otherBlock, opts, { helpers: stubHelpers });
+  assert.strictEqual(moved.status, 'invalid');
+  const otherTx = JSON.parse(JSON.stringify(receipt));
+  otherTx.anchor.tx = encode('QTX', crypto.randomBytes(32));
+  const unknown = await verifyWith(pinned, otherTx, opts, { helpers: stubHelpers });
+  assert.strictEqual(unknown.status, 'indeterminate');
+  assert.strictEqual(qstamp.isProven(unknown), false);
+  assert.match(unknown.trustDetail, /the transaction id in the receipt is not covered by the proof until the gateway serves a transaction inclusion proof/);
+});
+
+test('two verified certificates for different blocks at the anchor height refute the anchor in either order', async () => {
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const record = Buffer.from('an equivocation');
+  const receipt = await stamped(chain, record);
+  const fork = only(chain, {
+    finality: (c, h) => {
+      const real = c.finalityAt(Number(h));
+      const header = F.decodeHeader(Buffer.from(real.header_bytes, 'hex'));
+      const bytes = headerBytes(header.height, header.time + 50, header.eventRoot);
+      const hash = sha3(bytes).toString('hex');
+      return Object.assign({}, real, { header_bytes: bytes.toString('hex'), header_hash: hash, certificate: certificate([1, 2, 3])(header.height, hash) });
+    },
+  });
+  fork[0].base = 'https://fork.example';
+  for (const clients of [fork.concat(only(chain)), only(chain).concat(fork)]) {
+    const r = await verifyWith(pinned, receipt, { bytes: record, clients, trustCustomEndpoints: true }, { helpers: stubHelpers });
+    assert.strictEqual(r.status, 'invalid');
+    assert.strictEqual(qstamp.isProven(r), false);
+    assert.match(r.checks.find((c) => c.name === 'finality').detail, /2 different blocks at height .* equivocated/);
+  }
+  const alone = await verifyWith(pinned, receipt, { bytes: record, clients: only(chain).concat([client(chain, 'https://second.example', { proofs: true })]), trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.strictEqual(alone.status, 'valid');
 });
 
 test('an epoch derived from the height overrides the one an endpoint names', async () => {
@@ -368,7 +454,8 @@ test('the proof helpers are detected on the client core under their published na
   assert.ok(snake.finality && snake.event && snake.decode);
   const today = F.helpersFrom(qcore);
   assert.ok(today.chainId && today.finality && today.event && today.decode);
-  assert.strictEqual(require('@quantovainc/qcore/package.json').version, '0.5.2');
+  assert.strictEqual(require('@quantovainc/qcore/package.json').version, '0.5.6');
+  for (const name of ['verifyFinality', 'verifyEvent', 'decodeEvent', 'chainIdFromName']) assert.strictEqual(typeof qcore.core[name], 'function', name);
 });
 
 test('proof steps decode from the gateway form and reject a wrong root', () => {
