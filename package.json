@@ -29,7 +29,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@quantovainc/qcore": "0.4.2"
+    "@quantovainc/qcore": "0.4.3"
   },
   "keywords": [
     "post-quantum",
