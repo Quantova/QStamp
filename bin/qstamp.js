@@ -319,7 +319,6 @@ async function cmdVerify(positional, flags) {
     process.stdout.write('chain ' + chain + '\n');
     process.stdout.write('endpoints ' + (safe(result.endpoints.join(', ')) || 'none') + '\n');
     if (!result.officialEndpoints) process.stdout.write('notice  chain data came from an endpoint that is not the official one for this network\n');
-    if (chain === qstamp.NETWORKS.testnet.chainId) process.stdout.write('notice  this is a test network receipt and carries no evidential weight\n');
     if (result.status === 'valid') {
       const t = new Date(receipt.anchor.time * 1000);
       const when = Number.isNaN(t.getTime()) ? String(receipt.anchor.time) : t.toISOString();
