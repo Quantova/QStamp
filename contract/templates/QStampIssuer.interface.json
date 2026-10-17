@@ -1,0 +1,594 @@
+{
+  "ok": true,
+  "contracts": [
+    {
+      "name": "QStampIssuer",
+      "entries": [
+        {
+          "name": "stamp",
+          "signature": "stamp(StampOrder)",
+          "selector": "1effe529",
+          "args": [
+            {
+              "key": "@caller",
+              "offset": 0,
+              "width": 32
+            },
+            {
+              "key": "@contract",
+              "offset": 32,
+              "width": 32
+            },
+            {
+              "key": "@time",
+              "offset": 64,
+              "width": 8
+            },
+            {
+              "key": "@chain",
+              "offset": 72,
+              "width": 8
+            },
+            {
+              "key": "@value",
+              "offset": 80,
+              "width": 8
+            },
+            {
+              "key": "@in_asset",
+              "offset": 88,
+              "width": 32
+            },
+            {
+              "key": "order.commitment",
+              "offset": 120,
+              "width": 32
+            },
+            {
+              "key": "order#scheme",
+              "offset": 152,
+              "width": 8
+            },
+            {
+              "key": "order#ptr",
+              "offset": 160,
+              "width": 8
+            },
+            {
+              "key": "order.domain",
+              "offset": 168,
+              "width": 8
+            },
+            {
+              "key": "order.deadline",
+              "offset": 176,
+              "width": 8
+            },
+            {
+              "key": "order.kind",
+              "offset": 184,
+              "width": 8
+            },
+            {
+              "key": "order#expiry",
+              "offset": 192,
+              "width": 8
+            }
+          ],
+          "signed_orders": [
+            {
+              "param": "order",
+              "fields": [
+                "order.commitment",
+                "order.domain",
+                "order.deadline",
+                "order.kind"
+              ],
+              "field_types": [
+                "Q_Address",
+                "u64",
+                "u64",
+                "u64"
+              ],
+              "field_widths": [
+                32,
+                8,
+                8,
+                8
+              ],
+              "layout_hash": "8ec523f9556bc4a72e7bda0ed56f61a30c9ad466ec5e87f66550e6cdabb12d3f"
+            }
+          ],
+          "quorum_orders": [],
+          "sealed_params": []
+        },
+        {
+          "name": "revoke",
+          "signature": "revoke(RevokeOrder)",
+          "selector": "5add7204",
+          "args": [
+            {
+              "key": "@caller",
+              "offset": 0,
+              "width": 32
+            },
+            {
+              "key": "@contract",
+              "offset": 32,
+              "width": 32
+            },
+            {
+              "key": "@time",
+              "offset": 64,
+              "width": 8
+            },
+            {
+              "key": "@chain",
+              "offset": 72,
+              "width": 8
+            },
+            {
+              "key": "@value",
+              "offset": 80,
+              "width": 8
+            },
+            {
+              "key": "@in_asset",
+              "offset": 88,
+              "width": 32
+            },
+            {
+              "key": "order.commitment",
+              "offset": 120,
+              "width": 32
+            },
+            {
+              "key": "order#scheme",
+              "offset": 152,
+              "width": 8
+            },
+            {
+              "key": "order#ptr",
+              "offset": 160,
+              "width": 8
+            },
+            {
+              "key": "order.domain",
+              "offset": 168,
+              "width": 8
+            },
+            {
+              "key": "order.deadline",
+              "offset": 176,
+              "width": 8
+            },
+            {
+              "key": "order.reason",
+              "offset": 184,
+              "width": 8
+            },
+            {
+              "key": "order#expiry",
+              "offset": 192,
+              "width": 8
+            }
+          ],
+          "signed_orders": [
+            {
+              "param": "order",
+              "fields": [
+                "order.commitment",
+                "order.domain",
+                "order.deadline",
+                "order.reason"
+              ],
+              "field_types": [
+                "Q_Address",
+                "u64",
+                "u64",
+                "u64"
+              ],
+              "field_widths": [
+                32,
+                8,
+                8,
+                8
+              ],
+              "layout_hash": "1f4793c36969025b369f0b7b2ed297bdf4e14129823f78e9164eb5d05d58f96d"
+            }
+          ],
+          "quorum_orders": [],
+          "sealed_params": []
+        },
+        {
+          "name": "set_issuer",
+          "signature": "set_issuer(IssuerOrder)",
+          "selector": "c684c8d8",
+          "args": [
+            {
+              "key": "@caller",
+              "offset": 0,
+              "width": 32
+            },
+            {
+              "key": "@contract",
+              "offset": 32,
+              "width": 32
+            },
+            {
+              "key": "@time",
+              "offset": 64,
+              "width": 8
+            },
+            {
+              "key": "@chain",
+              "offset": 72,
+              "width": 8
+            },
+            {
+              "key": "@value",
+              "offset": 80,
+              "width": 8
+            },
+            {
+              "key": "@in_asset",
+              "offset": 88,
+              "width": 32
+            },
+            {
+              "key": "order#scheme",
+              "offset": 120,
+              "width": 8
+            },
+            {
+              "key": "order#ptr",
+              "offset": 128,
+              "width": 8
+            },
+            {
+              "key": "order.domain",
+              "offset": 136,
+              "width": 8
+            },
+            {
+              "key": "order.deadline",
+              "offset": 144,
+              "width": 8
+            },
+            {
+              "key": "order.issuer",
+              "offset": 152,
+              "width": 32
+            },
+            {
+              "key": "order#expiry",
+              "offset": 184,
+              "width": 8
+            }
+          ],
+          "signed_orders": [
+            {
+              "param": "order",
+              "fields": [
+                "order.domain",
+                "order.deadline",
+                "order.issuer"
+              ],
+              "field_types": [
+                "u64",
+                "u64",
+                "Q_Address"
+              ],
+              "field_widths": [
+                8,
+                8,
+                32
+              ],
+              "layout_hash": "3ccd19799c10760ac3398488d82ef7083ece7f2151f4103674cba4520de13c23"
+            }
+          ],
+          "quorum_orders": [],
+          "sealed_params": []
+        },
+        {
+          "name": "accept_issuer",
+          "signature": "accept_issuer(AcceptOrder)",
+          "selector": "29fb88a4",
+          "args": [
+            {
+              "key": "@caller",
+              "offset": 0,
+              "width": 32
+            },
+            {
+              "key": "@contract",
+              "offset": 32,
+              "width": 32
+            },
+            {
+              "key": "@time",
+              "offset": 64,
+              "width": 8
+            },
+            {
+              "key": "@chain",
+              "offset": 72,
+              "width": 8
+            },
+            {
+              "key": "@value",
+              "offset": 80,
+              "width": 8
+            },
+            {
+              "key": "@in_asset",
+              "offset": 88,
+              "width": 32
+            },
+            {
+              "key": "order#scheme",
+              "offset": 120,
+              "width": 8
+            },
+            {
+              "key": "order#ptr",
+              "offset": 128,
+              "width": 8
+            },
+            {
+              "key": "order.domain",
+              "offset": 136,
+              "width": 8
+            },
+            {
+              "key": "order.deadline",
+              "offset": 144,
+              "width": 8
+            },
+            {
+              "key": "order#expiry",
+              "offset": 152,
+              "width": 8
+            }
+          ],
+          "signed_orders": [
+            {
+              "param": "order",
+              "fields": [
+                "order.domain",
+                "order.deadline"
+              ],
+              "field_types": [
+                "u64",
+                "u64"
+              ],
+              "field_widths": [
+                8,
+                8
+              ],
+              "layout_hash": "6d33fce65e29150a7ecbef8dae5779d042311c15cfece8d23aaac50768695435"
+            }
+          ],
+          "quorum_orders": [],
+          "sealed_params": []
+        },
+        {
+          "name": "propose_owner",
+          "signature": "propose_owner(OwnerOrder)",
+          "selector": "26959e6d",
+          "args": [
+            {
+              "key": "@caller",
+              "offset": 0,
+              "width": 32
+            },
+            {
+              "key": "@contract",
+              "offset": 32,
+              "width": 32
+            },
+            {
+              "key": "@time",
+              "offset": 64,
+              "width": 8
+            },
+            {
+              "key": "@chain",
+              "offset": 72,
+              "width": 8
+            },
+            {
+              "key": "@value",
+              "offset": 80,
+              "width": 8
+            },
+            {
+              "key": "@in_asset",
+              "offset": 88,
+              "width": 32
+            },
+            {
+              "key": "order#scheme",
+              "offset": 120,
+              "width": 8
+            },
+            {
+              "key": "order#ptr",
+              "offset": 128,
+              "width": 8
+            },
+            {
+              "key": "order.domain",
+              "offset": 136,
+              "width": 8
+            },
+            {
+              "key": "order.deadline",
+              "offset": 144,
+              "width": 8
+            },
+            {
+              "key": "order.owner",
+              "offset": 152,
+              "width": 32
+            },
+            {
+              "key": "order#expiry",
+              "offset": 184,
+              "width": 8
+            }
+          ],
+          "signed_orders": [
+            {
+              "param": "order",
+              "fields": [
+                "order.domain",
+                "order.deadline",
+                "order.owner"
+              ],
+              "field_types": [
+                "u64",
+                "u64",
+                "Q_Address"
+              ],
+              "field_widths": [
+                8,
+                8,
+                32
+              ],
+              "layout_hash": "8df17790e4243484faad3c6ba5ed2b1307cc77cb609bb38cf3430c149d22a792"
+            }
+          ],
+          "quorum_orders": [],
+          "sealed_params": []
+        },
+        {
+          "name": "accept_owner",
+          "signature": "accept_owner(AcceptOrder)",
+          "selector": "f9968929",
+          "args": [
+            {
+              "key": "@caller",
+              "offset": 0,
+              "width": 32
+            },
+            {
+              "key": "@contract",
+              "offset": 32,
+              "width": 32
+            },
+            {
+              "key": "@time",
+              "offset": 64,
+              "width": 8
+            },
+            {
+              "key": "@chain",
+              "offset": 72,
+              "width": 8
+            },
+            {
+              "key": "@value",
+              "offset": 80,
+              "width": 8
+            },
+            {
+              "key": "@in_asset",
+              "offset": 88,
+              "width": 32
+            },
+            {
+              "key": "order#scheme",
+              "offset": 120,
+              "width": 8
+            },
+            {
+              "key": "order#ptr",
+              "offset": 128,
+              "width": 8
+            },
+            {
+              "key": "order.domain",
+              "offset": 136,
+              "width": 8
+            },
+            {
+              "key": "order.deadline",
+              "offset": 144,
+              "width": 8
+            },
+            {
+              "key": "order#expiry",
+              "offset": 152,
+              "width": 8
+            }
+          ],
+          "signed_orders": [
+            {
+              "param": "order",
+              "fields": [
+                "order.domain",
+                "order.deadline"
+              ],
+              "field_types": [
+                "u64",
+                "u64"
+              ],
+              "field_widths": [
+                8,
+                8
+              ],
+              "layout_hash": "4512aa8ee14cec7c7467e2a585f16ac341779c306c54fb748bdacc3dba1eaf90"
+            }
+          ],
+          "quorum_orders": [],
+          "sealed_params": []
+        }
+      ],
+      "events": [
+        {
+          "name": "Stamped",
+          "signature": "Stamped(Q_Address,Q_Address,u64)",
+          "selector": "14369772"
+        },
+        {
+          "name": "Revoked",
+          "signature": "Revoked(Q_Address,Q_Address,u64)",
+          "selector": "303d6c2f"
+        },
+        {
+          "name": "IssuerProposed",
+          "signature": "IssuerProposed(Q_Address,Q_Address)",
+          "selector": "db46a059"
+        },
+        {
+          "name": "IssuerChanged",
+          "signature": "IssuerChanged(Q_Address,Q_Address)",
+          "selector": "05b35c9f"
+        },
+        {
+          "name": "OwnerProposed",
+          "signature": "OwnerProposed(Q_Address,Q_Address)",
+          "selector": "95a5a08f"
+        },
+        {
+          "name": "OwnerChanged",
+          "signature": "OwnerChanged(Q_Address,Q_Address)",
+          "selector": "9e415c74"
+        }
+      ],
+      "deploy_params": [
+        {
+          "key": "deploy_params.issuer",
+          "offset": 120,
+          "width": 32
+        },
+        {
+          "key": "deploy_params.domain",
+          "offset": 152,
+          "width": 8
+        }
+      ]
+    }
+  ]
+}

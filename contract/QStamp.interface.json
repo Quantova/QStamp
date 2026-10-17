@@ -1,0 +1,138 @@
+{
+  "ok": true,
+  "contracts": [
+    {
+      "name": "QStamp",
+      "entries": [
+        {
+          "name": "stamp",
+          "signature": "stamp(u128,u128,u64)",
+          "selector": "6ae4cf77",
+          "args": [
+            {
+              "key": "@caller",
+              "offset": 0,
+              "width": 32
+            },
+            {
+              "key": "@contract",
+              "offset": 32,
+              "width": 32
+            },
+            {
+              "key": "@time",
+              "offset": 64,
+              "width": 8
+            },
+            {
+              "key": "@chain",
+              "offset": 72,
+              "width": 8
+            },
+            {
+              "key": "@value",
+              "offset": 80,
+              "width": 8
+            },
+            {
+              "key": "@in_asset",
+              "offset": 88,
+              "width": 32
+            },
+            {
+              "key": "hi",
+              "offset": 120,
+              "width": 16
+            },
+            {
+              "key": "lo",
+              "offset": 136,
+              "width": 16
+            },
+            {
+              "key": "kind",
+              "offset": 152,
+              "width": 8
+            }
+          ],
+          "signed_orders": [],
+          "quorum_orders": [],
+          "sealed_params": []
+        },
+        {
+          "name": "stamp_until",
+          "signature": "stamp_until(u128,u128,u64,u64)",
+          "selector": "c1c5ac38",
+          "args": [
+            {
+              "key": "@caller",
+              "offset": 0,
+              "width": 32
+            },
+            {
+              "key": "@contract",
+              "offset": 32,
+              "width": 32
+            },
+            {
+              "key": "@time",
+              "offset": 64,
+              "width": 8
+            },
+            {
+              "key": "@chain",
+              "offset": 72,
+              "width": 8
+            },
+            {
+              "key": "@value",
+              "offset": 80,
+              "width": 8
+            },
+            {
+              "key": "@in_asset",
+              "offset": 88,
+              "width": 32
+            },
+            {
+              "key": "hi",
+              "offset": 120,
+              "width": 16
+            },
+            {
+              "key": "lo",
+              "offset": 136,
+              "width": 16
+            },
+            {
+              "key": "kind",
+              "offset": 152,
+              "width": 8
+            },
+            {
+              "key": "until",
+              "offset": 160,
+              "width": 8
+            }
+          ],
+          "signed_orders": [],
+          "quorum_orders": [],
+          "sealed_params": []
+        }
+      ],
+      "events": [
+        {
+          "name": "Stamped",
+          "signature": "Stamped(Q_Address,u128,u128,u64)",
+          "selector": "5a110849"
+        },
+        {
+          "name": "StampedUntil",
+          "signature": "StampedUntil(Q_Address,u128,u128,u64,u64)",
+          "selector": "16676021"
+        }
+      ],
+      "deploy_params": []
+    }
+  ]
+}

@@ -1,0 +1,679 @@
+{
+  "ok": true,
+  "contracts": [
+    {
+      "name": "QStampCouncil",
+      "entries": [
+        {
+          "name": "stamp",
+          "signature": "stamp(StampOrder,Quorum<3 of 5,officials>)",
+          "selector": "d002a3d1",
+          "args": [
+            {
+              "key": "@caller",
+              "offset": 0,
+              "width": 32
+            },
+            {
+              "key": "@contract",
+              "offset": 32,
+              "width": 32
+            },
+            {
+              "key": "@time",
+              "offset": 64,
+              "width": 8
+            },
+            {
+              "key": "@chain",
+              "offset": 72,
+              "width": 8
+            },
+            {
+              "key": "@value",
+              "offset": 80,
+              "width": 8
+            },
+            {
+              "key": "@in_asset",
+              "offset": 88,
+              "width": 32
+            },
+            {
+              "key": "order.domain",
+              "offset": 120,
+              "width": 8
+            },
+            {
+              "key": "order.relayer",
+              "offset": 128,
+              "width": 32
+            },
+            {
+              "key": "order.deadline",
+              "offset": 160,
+              "width": 8
+            },
+            {
+              "key": "order.hi",
+              "offset": 168,
+              "width": 16
+            },
+            {
+              "key": "order.lo",
+              "offset": 184,
+              "width": 16
+            },
+            {
+              "key": "order.kind",
+              "offset": 200,
+              "width": 8
+            },
+            {
+              "key": "approvals#expiry",
+              "offset": 208,
+              "width": 8
+            },
+            {
+              "key": "approvals#0#scheme",
+              "offset": 216,
+              "width": 8
+            },
+            {
+              "key": "approvals#0#ptr",
+              "offset": 224,
+              "width": 8
+            },
+            {
+              "key": "approvals#0#index",
+              "offset": 232,
+              "width": 8
+            },
+            {
+              "key": "approvals#1#scheme",
+              "offset": 240,
+              "width": 8
+            },
+            {
+              "key": "approvals#1#ptr",
+              "offset": 248,
+              "width": 8
+            },
+            {
+              "key": "approvals#1#index",
+              "offset": 256,
+              "width": 8
+            },
+            {
+              "key": "approvals#2#scheme",
+              "offset": 264,
+              "width": 8
+            },
+            {
+              "key": "approvals#2#ptr",
+              "offset": 272,
+              "width": 8
+            },
+            {
+              "key": "approvals#2#index",
+              "offset": 280,
+              "width": 8
+            }
+          ],
+          "signed_orders": [],
+          "quorum_orders": [
+            {
+              "param": "approvals",
+              "fields": [
+                "order.domain",
+                "order.relayer",
+                "order.deadline",
+                "order.hi",
+                "order.lo",
+                "order.kind"
+              ],
+              "field_types": [
+                "u64",
+                "Q_Address",
+                "u64",
+                "u128",
+                "u128",
+                "u64"
+              ],
+              "field_widths": [
+                8,
+                32,
+                8,
+                16,
+                16,
+                8
+              ],
+              "layout_hash": "f385247aa0324765f66cb8b66b4975332c995364ee1b366a1dbb8da37dc6ac61"
+            }
+          ],
+          "sealed_params": []
+        },
+        {
+          "name": "arm_rotation",
+          "signature": "arm_rotation(GuardianSet<5>,ArmOrder,Quorum<4 of 5,officials>)",
+          "selector": "f00967ed",
+          "args": [
+            {
+              "key": "@caller",
+              "offset": 0,
+              "width": 32
+            },
+            {
+              "key": "@contract",
+              "offset": 32,
+              "width": 32
+            },
+            {
+              "key": "@time",
+              "offset": 64,
+              "width": 8
+            },
+            {
+              "key": "@chain",
+              "offset": 72,
+              "width": 8
+            },
+            {
+              "key": "@value",
+              "offset": 80,
+              "width": 8
+            },
+            {
+              "key": "@in_asset",
+              "offset": 88,
+              "width": 32
+            },
+            {
+              "key": "new_officials",
+              "offset": 120,
+              "width": 160
+            },
+            {
+              "key": "order.domain",
+              "offset": 280,
+              "width": 8
+            },
+            {
+              "key": "order.deadline",
+              "offset": 288,
+              "width": 8
+            },
+            {
+              "key": "approvals#expiry",
+              "offset": 296,
+              "width": 8
+            },
+            {
+              "key": "approvals#0#scheme",
+              "offset": 304,
+              "width": 8
+            },
+            {
+              "key": "approvals#0#ptr",
+              "offset": 312,
+              "width": 8
+            },
+            {
+              "key": "approvals#0#index",
+              "offset": 320,
+              "width": 8
+            },
+            {
+              "key": "approvals#1#scheme",
+              "offset": 328,
+              "width": 8
+            },
+            {
+              "key": "approvals#1#ptr",
+              "offset": 336,
+              "width": 8
+            },
+            {
+              "key": "approvals#1#index",
+              "offset": 344,
+              "width": 8
+            },
+            {
+              "key": "approvals#2#scheme",
+              "offset": 352,
+              "width": 8
+            },
+            {
+              "key": "approvals#2#ptr",
+              "offset": 360,
+              "width": 8
+            },
+            {
+              "key": "approvals#2#index",
+              "offset": 368,
+              "width": 8
+            },
+            {
+              "key": "approvals#3#scheme",
+              "offset": 376,
+              "width": 8
+            },
+            {
+              "key": "approvals#3#ptr",
+              "offset": 384,
+              "width": 8
+            },
+            {
+              "key": "approvals#3#index",
+              "offset": 392,
+              "width": 8
+            }
+          ],
+          "signed_orders": [],
+          "quorum_orders": [
+            {
+              "param": "approvals",
+              "fields": [
+                "new_officials",
+                "order.domain",
+                "order.deadline"
+              ],
+              "field_types": [
+                "GuardianSet",
+                "u64",
+                "u64"
+              ],
+              "field_widths": [
+                160,
+                8,
+                8
+              ],
+              "layout_hash": "793c1e3a6696fe1f35ce7d000975087300d766656255060050e2ac5c681d368f"
+            }
+          ],
+          "sealed_params": []
+        },
+        {
+          "name": "rotate",
+          "signature": "rotate(GuardianSet<5>,RotateOrder,Quorum<5 of 5,proposed>,Quorum<4 of 5,officials>)",
+          "selector": "d3ea7527",
+          "args": [
+            {
+              "key": "@caller",
+              "offset": 0,
+              "width": 32
+            },
+            {
+              "key": "@contract",
+              "offset": 32,
+              "width": 32
+            },
+            {
+              "key": "@time",
+              "offset": 64,
+              "width": 8
+            },
+            {
+              "key": "@chain",
+              "offset": 72,
+              "width": 8
+            },
+            {
+              "key": "@value",
+              "offset": 80,
+              "width": 8
+            },
+            {
+              "key": "@in_asset",
+              "offset": 88,
+              "width": 32
+            },
+            {
+              "key": "new_officials",
+              "offset": 120,
+              "width": 160
+            },
+            {
+              "key": "order.domain",
+              "offset": 280,
+              "width": 8
+            },
+            {
+              "key": "order.deadline",
+              "offset": 288,
+              "width": 8
+            },
+            {
+              "key": "confirmations#expiry",
+              "offset": 296,
+              "width": 8
+            },
+            {
+              "key": "confirmations#0#scheme",
+              "offset": 304,
+              "width": 8
+            },
+            {
+              "key": "confirmations#0#ptr",
+              "offset": 312,
+              "width": 8
+            },
+            {
+              "key": "confirmations#0#index",
+              "offset": 320,
+              "width": 8
+            },
+            {
+              "key": "confirmations#1#scheme",
+              "offset": 328,
+              "width": 8
+            },
+            {
+              "key": "confirmations#1#ptr",
+              "offset": 336,
+              "width": 8
+            },
+            {
+              "key": "confirmations#1#index",
+              "offset": 344,
+              "width": 8
+            },
+            {
+              "key": "confirmations#2#scheme",
+              "offset": 352,
+              "width": 8
+            },
+            {
+              "key": "confirmations#2#ptr",
+              "offset": 360,
+              "width": 8
+            },
+            {
+              "key": "confirmations#2#index",
+              "offset": 368,
+              "width": 8
+            },
+            {
+              "key": "confirmations#3#scheme",
+              "offset": 376,
+              "width": 8
+            },
+            {
+              "key": "confirmations#3#ptr",
+              "offset": 384,
+              "width": 8
+            },
+            {
+              "key": "confirmations#3#index",
+              "offset": 392,
+              "width": 8
+            },
+            {
+              "key": "confirmations#4#scheme",
+              "offset": 400,
+              "width": 8
+            },
+            {
+              "key": "confirmations#4#ptr",
+              "offset": 408,
+              "width": 8
+            },
+            {
+              "key": "confirmations#4#index",
+              "offset": 416,
+              "width": 8
+            },
+            {
+              "key": "approvals#expiry",
+              "offset": 424,
+              "width": 8
+            },
+            {
+              "key": "approvals#0#scheme",
+              "offset": 432,
+              "width": 8
+            },
+            {
+              "key": "approvals#0#ptr",
+              "offset": 440,
+              "width": 8
+            },
+            {
+              "key": "approvals#0#index",
+              "offset": 448,
+              "width": 8
+            },
+            {
+              "key": "approvals#1#scheme",
+              "offset": 456,
+              "width": 8
+            },
+            {
+              "key": "approvals#1#ptr",
+              "offset": 464,
+              "width": 8
+            },
+            {
+              "key": "approvals#1#index",
+              "offset": 472,
+              "width": 8
+            },
+            {
+              "key": "approvals#2#scheme",
+              "offset": 480,
+              "width": 8
+            },
+            {
+              "key": "approvals#2#ptr",
+              "offset": 488,
+              "width": 8
+            },
+            {
+              "key": "approvals#2#index",
+              "offset": 496,
+              "width": 8
+            },
+            {
+              "key": "approvals#3#scheme",
+              "offset": 504,
+              "width": 8
+            },
+            {
+              "key": "approvals#3#ptr",
+              "offset": 512,
+              "width": 8
+            },
+            {
+              "key": "approvals#3#index",
+              "offset": 520,
+              "width": 8
+            }
+          ],
+          "signed_orders": [],
+          "quorum_orders": [
+            {
+              "param": "confirmations",
+              "fields": [
+                "new_officials",
+                "order.domain",
+                "order.deadline"
+              ],
+              "field_types": [
+                "GuardianSet",
+                "u64",
+                "u64"
+              ],
+              "field_widths": [
+                160,
+                8,
+                8
+              ],
+              "layout_hash": "33376c55eb1d5a61311800860111841d61ae7213884f1fd6ec04950584a275bd"
+            },
+            {
+              "param": "approvals",
+              "fields": [
+                "new_officials",
+                "order.domain",
+                "order.deadline"
+              ],
+              "field_types": [
+                "GuardianSet",
+                "u64",
+                "u64"
+              ],
+              "field_widths": [
+                160,
+                8,
+                8
+              ],
+              "layout_hash": "33376c55eb1d5a61311800860111841d61ae7213884f1fd6ec04950584a275bd"
+            }
+          ],
+          "sealed_params": []
+        },
+        {
+          "name": "cancel_rotation",
+          "signature": "cancel_rotation(CancelOrder,Quorum<2 of 5,officials>)",
+          "selector": "bd994c28",
+          "args": [
+            {
+              "key": "@caller",
+              "offset": 0,
+              "width": 32
+            },
+            {
+              "key": "@contract",
+              "offset": 32,
+              "width": 32
+            },
+            {
+              "key": "@time",
+              "offset": 64,
+              "width": 8
+            },
+            {
+              "key": "@chain",
+              "offset": 72,
+              "width": 8
+            },
+            {
+              "key": "@value",
+              "offset": 80,
+              "width": 8
+            },
+            {
+              "key": "@in_asset",
+              "offset": 88,
+              "width": 32
+            },
+            {
+              "key": "order.domain",
+              "offset": 120,
+              "width": 8
+            },
+            {
+              "key": "order.deadline",
+              "offset": 128,
+              "width": 8
+            },
+            {
+              "key": "approvals#expiry",
+              "offset": 136,
+              "width": 8
+            },
+            {
+              "key": "approvals#0#scheme",
+              "offset": 144,
+              "width": 8
+            },
+            {
+              "key": "approvals#0#ptr",
+              "offset": 152,
+              "width": 8
+            },
+            {
+              "key": "approvals#0#index",
+              "offset": 160,
+              "width": 8
+            },
+            {
+              "key": "approvals#1#scheme",
+              "offset": 168,
+              "width": 8
+            },
+            {
+              "key": "approvals#1#ptr",
+              "offset": 176,
+              "width": 8
+            },
+            {
+              "key": "approvals#1#index",
+              "offset": 184,
+              "width": 8
+            }
+          ],
+          "signed_orders": [],
+          "quorum_orders": [
+            {
+              "param": "approvals",
+              "fields": [
+                "order.domain",
+                "order.deadline"
+              ],
+              "field_types": [
+                "u64",
+                "u64"
+              ],
+              "field_widths": [
+                8,
+                8
+              ],
+              "layout_hash": "f3a888c6b694dbfc8c72e6f544d3ecceac43396fb5abfbcab0b92734f16cfd51"
+            }
+          ],
+          "sealed_params": []
+        }
+      ],
+      "events": [
+        {
+          "name": "Stamped",
+          "signature": "Stamped(Q_Address,u128,u128,u64)",
+          "selector": "5a110849"
+        },
+        {
+          "name": "Approved",
+          "signature": "Approved(u128,u128,Q_Hash,u64)",
+          "selector": "4e615a0b"
+        },
+        {
+          "name": "RotationArmed",
+          "signature": "RotationArmed(Q_Hash,u64)",
+          "selector": "c8e4b554"
+        },
+        {
+          "name": "Rotated",
+          "signature": "Rotated(u64)",
+          "selector": "cdb978e5"
+        },
+        {
+          "name": "RotationCancelled",
+          "signature": "RotationCancelled(Q_Hash,u64)",
+          "selector": "468b4fbe"
+        }
+      ],
+      "deploy_params": [
+        {
+          "key": "deploy_params.officials",
+          "offset": 120,
+          "width": 160
+        },
+        {
+          "key": "deploy_params.domain",
+          "offset": 280,
+          "width": 8
+        }
+      ]
+    }
+  ]
+}
