@@ -1,0 +1,85 @@
+# Copyright 2026 Quantova Inc
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ matrix.node }}
+      - name: install
+        run: npm ci --ignore-scripts
+      - name: lint
+        run: npm run lint
+      - name: test
+        run: npm test
+      - name: advisories
+        run: npm audit --audit-level=low
+
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
+        with:
+          toolchain: stable
+      - name: rebuild the contract container from source
+        run: bash scripts/build-contract.sh
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: install gitleaks
+        shell: bash
+        run: |
+          set -euo pipefail
+          ver=8.30.1
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${ver}/gitleaks_${ver}_linux_x64.tar.gz" -o /tmp/gl.tgz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gl.tgz" | sha256sum -c -
+          tar -xzf /tmp/gl.tgz -C /tmp gitleaks
+          install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
+      - name: secret scan over full history
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/gitleaks.toml <<'TOML'
+          title = "quantova secret scan"
+          [extend]
+          useDefault = true
+          [allowlist]
+          description = "public, example, and checksum data that is not a secret"
+          paths = [
+            '''(^|/)package-lock\.json$''',
+            '''(^|/)contract/QStamp\.qbc\.sha256$''',
+          ]
+          regexes = [
+            '''^[Qq]1[0-9A-Za-z]{25,}$''',
+            '''QTX1[0-9A-Z]{20,}''',
+            '''QBK1[0-9A-Z]{20,}''',
+          ]
+          TOML
+          gitleaks detect --source . --no-banner --redact --config /tmp/gitleaks.toml
