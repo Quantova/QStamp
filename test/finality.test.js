@@ -454,7 +454,7 @@ test('the proof helpers are detected on the client core under their published na
   assert.ok(snake.finality && snake.event && snake.decode);
   const today = F.helpersFrom(qcore);
   assert.ok(today.chainId && today.finality && today.event && today.decode);
-  assert.strictEqual(require('@quantovainc/qcore/package.json').version, '0.5.6');
+  assert.strictEqual(require('@quantovainc/qcore/package.json').version, require('../package.json').dependencies['@quantovainc/qcore']);
   for (const name of ['verifyFinality', 'verifyEvent', 'decodeEvent', 'chainIdFromName']) assert.strictEqual(typeof qcore.core[name], 'function', name);
 });
 
