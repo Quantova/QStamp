@@ -12,9 +12,18 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TEMPLATES_REPOSITORY: Quantova/Qstamp-Quanta-Smart-contract-example-
+  TEMPLATES_COMMIT: 07b16ffcab65c0e14d1a63cc5dcb2ba462bbf0cd
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       matrix:
         node: [20, 22, 24]
@@ -36,18 +45,35 @@ jobs:
 
   contract:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ${{ env.TEMPLATES_REPOSITORY }}
+          ref: ${{ env.TEMPLATES_COMMIT }}
+          path: templates
+          persist-credentials: false
+      - name: the templates must be at the pinned commit
+        run: |
+          set -euo pipefail
+          have=$(git -C templates rev-parse HEAD)
+          if [ "$have" != "$TEMPLATES_COMMIT" ]; then
+            echo "the templates are at $have, the pinned commit is $TEMPLATES_COMMIT" >&2; exit 1
+          fi
       - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: stable
-      - name: rebuild the contract container from source
+      - name: rebuild the contract container and the issuer and council template interfaces from source
+        env:
+          QSTAMP_TEMPLATES_DIR: ${{ github.workspace }}/templates
         run: bash scripts/build-contract.sh
 
   secrets:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:

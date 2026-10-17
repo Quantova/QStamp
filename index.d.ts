@@ -35,14 +35,29 @@ export interface PendingStamp {
 }
 
 export interface QstampError extends Error {
-  code?: 'QSTAMP_PENDING' | 'QSTAMP_NOT_RECORDED' | 'QSTAMP_UNCONFIRMED' | 'QSTAMP_DISAGREEMENT' | 'QSTAMP_CHAIN_TIME' | 'QSTAMP_TRANSPORT';
+  code?: 'QSTAMP_PENDING' | 'QSTAMP_NOT_RECORDED' | 'QSTAMP_UNCONFIRMED' | 'QSTAMP_DISAGREEMENT' | 'QSTAMP_CHAIN_TIME' | 'QSTAMP_TRANSPORT' | 'QSTAMP_FILE';
+  reason?: string;
+  transient?: boolean;
   pending?: PendingStamp;
+  cause?: unknown;
 }
 
-export interface EndpointOptions {
-  rpc?: string | string[];
+export interface EndpointEntry {
+  url: string;
+  ca?: string | Buffer;
+  cert?: string | Buffer;
+  key?: string | Buffer;
+}
+
+export interface ControlOptions {
+  deadlineMs?: number;
+  signal?: AbortSignal;
+}
+
+export interface EndpointOptions extends ControlOptions {
+  rpc?: string | EndpointEntry | Array<string | EndpointEntry>;
   client?: unknown;
-  clients?: Array<string | unknown>;
+  clients?: Array<string | EndpointEntry | unknown>;
   trustSingleEndpoint?: boolean;
   trustCustomEndpoints?: boolean;
   allowLoopback?: boolean;

@@ -1,6 +1,6 @@
 {
   "name": "@quantovainc/qstamp",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Post quantum time stamping for records, software, financial data and AI artefacts on the Quantova network, with receipts any party can verify.",
   "main": "index.js",
   "types": "index.d.ts",
@@ -35,7 +35,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@quantovainc/qcore": "0.5.2"
+    "@quantovainc/qcore": "0.5.6"
   },
   "keywords": [
     "post-quantum",

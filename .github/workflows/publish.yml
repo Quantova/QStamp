@@ -10,17 +10,31 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TEMPLATES_REPOSITORY: Quantova/Qstamp-Quanta-Smart-contract-example-
+  TEMPLATES_COMMIT: 07b16ffcab65c0e14d1a63cc5dcb2ba462bbf0cd
+
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ${{ env.TEMPLATES_REPOSITORY }}
+          ref: ${{ env.TEMPLATES_COMMIT }}
+          path: templates
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
       - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
           toolchain: stable
@@ -36,6 +50,13 @@ jobs:
           if [ "$tagged" != "$declared" ]; then
             echo "tag $GITHUB_REF_NAME does not name package version $declared" >&2; exit 1
           fi
+      - name: the templates must be at the pinned commit
+        run: |
+          set -euo pipefail
+          have=$(git -C templates rev-parse HEAD)
+          if [ "$have" != "$TEMPLATES_COMMIT" ]; then
+            echo "the templates are at $have, the pinned commit is $TEMPLATES_COMMIT" >&2; exit 1
+          fi
       - name: test
         run: |
           set -euo pipefail
@@ -43,12 +64,15 @@ jobs:
           npm run lint
           npm test
           npm audit --audit-level=low
-      - name: rebuild the contract container from source
+      - name: rebuild the contract container and the issuer and council template interfaces from source
+        env:
+          QSTAMP_TEMPLATES_DIR: ${{ github.workspace }}/templates
         run: bash scripts/build-contract.sh
 
   publish:
     needs: verify
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: npm
     permissions:
       contents: read
@@ -57,20 +81,57 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
-      - name: publish the verified commit with provenance
+      - name: the tagged commit must be on main and the tag must name the package version
         run: |
           set -euo pipefail
           case "$GITHUB_REF" in
             refs/tags/v*) ;;
             *) echo "publish runs only from a vX.Y.Z tag, refusing $GITHUB_REF" >&2; exit 1 ;;
           esac
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "the tagged commit $GITHUB_SHA is not on main, refusing to publish it" >&2; exit 1
+          fi
           tagged="${GITHUB_REF_NAME#v}"
           declared=$(node -p "require('./package.json').version")
           if [ "$tagged" != "$declared" ]; then
             echo "tag $GITHUB_REF_NAME does not name package version $declared" >&2; exit 1
           fi
+      - name: npm must support trusted publishing
+        run: |
+          set -euo pipefail
+          have=$(npm --version)
+          node -e '
+            const [a, b, c] = process.argv[1].split(".").map(Number);
+            const ok = a > 11 || (a === 11 && (b > 5 || (b === 5 && c >= 1)));
+            if (!ok) { console.error("npm " + process.argv[1] + " cannot publish with trusted publishing, 11.5.1 or later is needed"); process.exit(1); }
+          ' "$have"
+      - name: publish the verified commit with provenance
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${NPM_TOKEN:-}" ]; then
+            export NODE_AUTH_TOKEN="$NPM_TOKEN"
+            npmrc="$RUNNER_TEMP/publish.npmrc"
+            echo "//registry.npmjs.org/:_authToken=\${NODE_AUTH_TOKEN}" > "$npmrc"
+            export NPM_CONFIG_USERCONFIG="$npmrc"
+          fi
           npm publish --provenance --access public --ignore-scripts
+      - name: the published version must carry a provenance attestation
+        run: |
+          set -euo pipefail
+          V=$(node -p "require('./package.json').version")
+          for _ in $(seq 1 30); do
+            kind=$(npm view "@quantovainc/qstamp@$V" dist.attestations.provenance.predicateType 2>/dev/null || true)
+            if [ "$kind" = "https://slsa.dev/provenance/v1" ]; then
+              npm view "@quantovainc/qstamp@$V" dist.attestations
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "@quantovainc/qstamp@$V shows no provenance attestation" >&2
+          exit 1
