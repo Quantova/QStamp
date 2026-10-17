@@ -295,8 +295,8 @@
         },
         {
           "name": "rotate",
-          "signature": "rotate(GuardianSet<5>,RotateOrder,Quorum<5 of 5,proposed>,Quorum<4 of 5,officials>)",
-          "selector": "d3ea7527",
+          "signature": "rotate(RotateOrder,Quorum<5 of 5,proposed>,Quorum<4 of 5,officials>)",
+          "selector": "b4ca64f2",
           "args": [
             {
               "key": "@caller",
@@ -329,163 +329,158 @@
               "width": 32
             },
             {
-              "key": "new_officials",
-              "offset": 120,
-              "width": 160
-            },
-            {
               "key": "order.domain",
-              "offset": 280,
+              "offset": 120,
               "width": 8
             },
             {
               "key": "order.deadline",
-              "offset": 288,
+              "offset": 128,
               "width": 8
             },
             {
               "key": "confirmations#expiry",
-              "offset": 296,
+              "offset": 136,
               "width": 8
             },
             {
               "key": "confirmations#0#scheme",
-              "offset": 304,
+              "offset": 144,
               "width": 8
             },
             {
               "key": "confirmations#0#ptr",
-              "offset": 312,
+              "offset": 152,
               "width": 8
             },
             {
               "key": "confirmations#0#index",
-              "offset": 320,
+              "offset": 160,
               "width": 8
             },
             {
               "key": "confirmations#1#scheme",
-              "offset": 328,
+              "offset": 168,
               "width": 8
             },
             {
               "key": "confirmations#1#ptr",
-              "offset": 336,
+              "offset": 176,
               "width": 8
             },
             {
               "key": "confirmations#1#index",
-              "offset": 344,
+              "offset": 184,
               "width": 8
             },
             {
               "key": "confirmations#2#scheme",
-              "offset": 352,
+              "offset": 192,
               "width": 8
             },
             {
               "key": "confirmations#2#ptr",
-              "offset": 360,
+              "offset": 200,
               "width": 8
             },
             {
               "key": "confirmations#2#index",
-              "offset": 368,
+              "offset": 208,
               "width": 8
             },
             {
               "key": "confirmations#3#scheme",
-              "offset": 376,
+              "offset": 216,
               "width": 8
             },
             {
               "key": "confirmations#3#ptr",
-              "offset": 384,
+              "offset": 224,
               "width": 8
             },
             {
               "key": "confirmations#3#index",
-              "offset": 392,
+              "offset": 232,
               "width": 8
             },
             {
               "key": "confirmations#4#scheme",
-              "offset": 400,
+              "offset": 240,
               "width": 8
             },
             {
               "key": "confirmations#4#ptr",
-              "offset": 408,
+              "offset": 248,
               "width": 8
             },
             {
               "key": "confirmations#4#index",
-              "offset": 416,
+              "offset": 256,
               "width": 8
             },
             {
               "key": "approvals#expiry",
-              "offset": 424,
+              "offset": 264,
               "width": 8
             },
             {
               "key": "approvals#0#scheme",
-              "offset": 432,
+              "offset": 272,
               "width": 8
             },
             {
               "key": "approvals#0#ptr",
-              "offset": 440,
+              "offset": 280,
               "width": 8
             },
             {
               "key": "approvals#0#index",
-              "offset": 448,
+              "offset": 288,
               "width": 8
             },
             {
               "key": "approvals#1#scheme",
-              "offset": 456,
+              "offset": 296,
               "width": 8
             },
             {
               "key": "approvals#1#ptr",
-              "offset": 464,
+              "offset": 304,
               "width": 8
             },
             {
               "key": "approvals#1#index",
-              "offset": 472,
+              "offset": 312,
               "width": 8
             },
             {
               "key": "approvals#2#scheme",
-              "offset": 480,
+              "offset": 320,
               "width": 8
             },
             {
               "key": "approvals#2#ptr",
-              "offset": 488,
+              "offset": 328,
               "width": 8
             },
             {
               "key": "approvals#2#index",
-              "offset": 496,
+              "offset": 336,
               "width": 8
             },
             {
               "key": "approvals#3#scheme",
-              "offset": 504,
+              "offset": 344,
               "width": 8
             },
             {
               "key": "approvals#3#ptr",
-              "offset": 512,
+              "offset": 352,
               "width": 8
             },
             {
               "key": "approvals#3#index",
-              "offset": 520,
+              "offset": 360,
               "width": 8
             }
           ],
@@ -494,40 +489,34 @@
             {
               "param": "confirmations",
               "fields": [
-                "new_officials",
                 "order.domain",
                 "order.deadline"
               ],
               "field_types": [
-                "GuardianSet",
                 "u64",
                 "u64"
               ],
               "field_widths": [
-                160,
                 8,
                 8
               ],
-              "layout_hash": "33376c55eb1d5a61311800860111841d61ae7213884f1fd6ec04950584a275bd"
+              "layout_hash": "b009960fea9136983c63fdd9843c210c286e10d5b80041a4541cf330a49edd5c"
             },
             {
               "param": "approvals",
               "fields": [
-                "new_officials",
                 "order.domain",
                 "order.deadline"
               ],
               "field_types": [
-                "GuardianSet",
                 "u64",
                 "u64"
               ],
               "field_widths": [
-                160,
                 8,
                 8
               ],
-              "layout_hash": "33376c55eb1d5a61311800860111841d61ae7213884f1fd6ec04950584a275bd"
+              "layout_hash": "b009960fea9136983c63fdd9843c210c286e10d5b80041a4541cf330a49edd5c"
             }
           ],
           "sealed_params": []

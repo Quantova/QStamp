@@ -33,7 +33,7 @@ test('the container, its hash and its build script are published with the packag
   assert.ok(pkg.files.includes('contract/'));
   assert.ok(pkg.files.includes('scripts/build-contract.sh'));
   const script = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'build-contract.sh'), 'utf8');
-  assert.match(script, /QUANTA_COMMIT="ccdf4c20b167daf2b60a87267c1e12557738d354"/);
+  assert.match(script, /QUANTA_COMMIT="96e6a394cca3b2297e3ff11df292ad05dabd341c"/);
   for (const f of ['QStamp.interface.json', 'templates/QStampIssuer.interface.json', 'templates/QStampCouncil.interface.json']) {
     assert.ok(fs.existsSync(path.join(DIR, f)), f);
   }
