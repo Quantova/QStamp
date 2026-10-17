@@ -19,6 +19,7 @@ export interface Receipt {
   proof: { index: number; size: number; path: string[] };
   root: string;
   anchor: { tx: string; height: number; block: string; time: number; sender: string };
+  until?: number;
 }
 
 export interface PendingStamp {
@@ -30,34 +31,38 @@ export interface PendingStamp {
   tx: string;
   commitment: string;
   records: Array<{ alg: DigestAlgorithm; digest: string; salt: string }>;
+  until?: number;
 }
 
 export interface QstampError extends Error {
-  code?: 'QSTAMP_PENDING' | 'QSTAMP_NOT_RECORDED';
+  code?: 'QSTAMP_PENDING' | 'QSTAMP_NOT_RECORDED' | 'QSTAMP_UNCONFIRMED' | 'QSTAMP_DISAGREEMENT' | 'QSTAMP_CHAIN_TIME';
   pending?: PendingStamp;
 }
 
-export interface StampOptions {
+export interface EndpointOptions {
+  rpc?: string | string[];
+  client?: unknown;
+  clients?: Array<string | unknown>;
+  trustSingleEndpoint?: boolean;
+}
+
+export interface StampOptions extends EndpointOptions {
   seed: Uint8Array;
   index: number;
   records: StampRecord[];
   kind?: string | number | bigint;
+  until?: number;
   network?: 'testnet';
-  rpc?: string;
-  client?: unknown;
   meter?: number;
   maxFee?: string | number;
   timeoutMs?: number;
   onPending?: (pending: PendingStamp) => void | Promise<void>;
 }
 
-export interface VerifyOptions {
+export interface VerifyOptions extends EndpointOptions {
   file?: string;
   bytes?: Uint8Array;
   digest?: Bytes32;
-  rpc?: string;
-  client?: unknown;
-  clients?: Array<string | unknown>;
   contract?: string;
   trustCustomContract?: boolean;
 }
@@ -94,7 +99,22 @@ export interface CommitmentContext {
 }
 
 export function stamp(options: StampOptions): Promise<Receipt[]>;
-export function complete(pending: PendingStamp, options?: { rpc?: string; client?: unknown; timeoutMs?: number }): Promise<Receipt[]>;
+export interface ChainTimeOptions extends EndpointOptions {
+  network?: 'testnet';
+  clockSlackMs?: number;
+}
+
+export interface ChainTime {
+  chainMs: number;
+  hostMs: number;
+  early: number;
+  late: number;
+  height: number;
+  endpoints: string[];
+}
+
+export function complete(pending: PendingStamp, options?: EndpointOptions & { timeoutMs?: number }): Promise<Receipt[]>;
+export function chainTime(options?: ChainTimeOptions): Promise<ChainTime>;
 export function verify(receipt: unknown, options?: VerifyOptions): Promise<VerifyResult>;
 export function prepare(records: StampRecord[]): { recs: Array<{ alg: DigestAlgorithm; digest: Buffer; salt: Buffer }>; root: Buffer; paths: Buffer[][] };
 export function digestBytes(bytes: Uint8Array, alg?: DigestAlgorithm): Buffer;

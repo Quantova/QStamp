@@ -46,6 +46,8 @@ Typical uses include financial and trading records, contracts and loan documents
 
 5. Anchoring. A single transaction calls the Qstamp contract with the commitment and a record kind, and nothing else about the batch is sent. The contract emits one event that holds the address of the signer, the commitment and the kind. The contract keeps no state, holds no funds and has no owner or upgrade path. The Quantova network admits only contract code signed by its attested compiler, so the deployed contract cannot be replaced by altered code at the same address.
 
+The contract also offers the entry stamp_until, which takes a deadline in seconds since 1970 and records the commitment only while the block time is at or before that deadline. It emits an event that also holds the deadline, and the receipt then carries it in the field until. The stamp option until uses this entry. A record that must be anchored before an expiry, such as an action under a mandate, can therefore never be anchored after it.
+
 6. Receipt. Each record receives its own receipt. A receipt holds the chain identity, the contract address, the record kind, the algorithm, digest and salt, the inclusion path, the tree root and the anchoring transaction, block height, block identifier, block time and signer address. A receipt contains no part of the record.
 
 ## What a receipt establishes
@@ -69,7 +71,7 @@ When verification succeeds, the following statements hold.
 
 The checks on the record, the salt, the inclusion path and the commitment are performed locally and depend on no outside party.
 
-Release 0.1 then confirms the anchoring transaction, the emitted event and the block through the chain RPC interface. For these facts the verifier relies on the endpoint it queries. An endpoint operated dishonestly could report an anchor that does not exist, so a verifier should use the official endpoint, which is the default, or several endpoints operated by independent parties. Every endpoint is checked to serve the chain named in the receipt, every endpoint must agree, and the result states which endpoints were consulted and whether they were the official ones.
+This release then confirms the anchoring transaction, the emitted event and the block through the chain RPC interface. The gateway does not yet serve finality certificates or inclusion proofs for ordinary blocks, so these facts cannot be checked against data an endpoint is unable to forge. Verification therefore asks every endpoint it is given and accepts the anchor only when at least two endpoints run by different operators answer and return identical chain data. Endpoints on the same host name count once, as do all loopback endpoints. With a single endpoint the result is indeterminate unless the caller sets trustSingleEndpoint to true, or passes --trust-single-endpoint, accepting that one dishonest endpoint could then invent an anchor. When the endpoints disagree the result is never valid. Stamping applies the same rule before it writes a receipt.
 
 A later release will carry the block header, the validator finality certificate and the event inclusion proof inside each receipt. Verification will then need only the receipt, the record and the published validator set, with no network access and no trusted endpoint.
 
@@ -102,7 +104,7 @@ qstamp hash report.pdf ledger.csv
 Stamp one or more files in a single transaction. The key file holds a 32 byte seed as 64 hexadecimal characters and must be readable only by its owner.
 
 ```
-qstamp stamp report.pdf ledger.csv --seed-file ./signer.key --index 0 --kind financial_record
+qstamp stamp report.pdf ledger.csv --seed-file ./signer.key --index 0 --kind financial_record --rpc https://rpc-testnet.quantova.org --rpc https://rpc.example.org
 ```
 
 Each file receives a receipt named after it with the suffix `.qstamp.json`. Every receipt file is reserved before anything is signed, so a stamp is never paid for without a place to record it. Two inputs that would share one receipt name are refused, and receipts are never written through a symbolic link. Every receipt and pending file is written to a new private file and then moved into place, so an existing receipt replaced with `--force` stays intact until its replacement is complete. The `complete` command writes only files whose names end in `.qstamp.json` and never replaces an existing receipt unless `--force` is given.
@@ -116,7 +118,7 @@ qstamp complete qstamp-pending-1760000000000-a1b2c3d4.json
 Verify a receipt against its record. Verification requires the record or its digest, and it may consult several endpoints.
 
 ```
-qstamp verify report.pdf.qstamp.json --file report.pdf --rpc https://rpc-testnet.quantova.org
+qstamp verify report.pdf.qstamp.json --file report.pdf --rpc https://rpc-testnet.quantova.org --rpc https://rpc.example.org
 ```
 
 The command exits with status 0 when the receipt is valid, 1 when it is invalid or cannot be read and 2 only when it could not be evaluated, for example because no endpoint could be reached. Usage errors exit with status 64. An unreachable endpoint never produces a valid result. Unknown or misspelt options are refused before any action is taken. Text received from an endpoint is stripped of control characters before it is shown, and an endpoint listed twice is consulted once.
@@ -127,17 +129,21 @@ The command exits with status 0 when the receipt is valid, 1 when it is invalid 
 const qstamp = require('@quantovainc/qstamp');
 
 const digest = await qstamp.digestFile('report.pdf');
+const clients = ['https://rpc-testnet.quantova.org', 'https://rpc.example.org'];
 const [receipt] = await qstamp.stamp({
   seed,
   index: 0,
   kind: 'financial_record',
   records: [{ digest }],
+  clients,
 });
 
-const result = await qstamp.verify(receipt, { file: 'report.pdf' });
+const result = await qstamp.verify(receipt, { file: 'report.pdf', clients });
 ```
 
 The seed must be supplied as a `Uint8Array` of 32 bytes so that the caller can wipe it. Text seeds are refused because text cannot be erased from memory. The SDK signs from a private copy and overwrites that copy with zeros as soon as the transaction is signed. The underlying signing library also holds the seed briefly in its own memory, which cannot be wiped from JavaScript.
+
+The function chainTime returns the time of the finalised chain head read from the same endpoints. It refuses an endpoint whose head is more than two minutes behind the local clock or behind a chain time seen earlier in the process, and endpoints that disagree by more than that margin, so neither a wrong local clock nor a single endpoint can move a decision about expiry into the past.
 
 The `verify` result reports a status of valid, invalid or indeterminate, lists every check with its outcome and reason, states whether the record itself was checked and names the endpoints consulted. A receipt is never reported valid unless the record or its digest was supplied and matched.
 

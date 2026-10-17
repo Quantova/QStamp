@@ -9,11 +9,13 @@ const { stamp, complete, prepare, PENDING_FORMAT } = require('./lib/stamp');
 const { verify } = require('./lib/verify');
 const { FORMAT, KINDS, validate } = require('./lib/receipt');
 const { NETWORKS } = require('./lib/networks');
+const { chainTime } = require('./lib/endpoints');
 
 module.exports = {
   stamp,
   complete,
   verify,
+  chainTime,
   prepare,
   digestBytes,
   digestFile,

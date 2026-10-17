@@ -19,17 +19,20 @@ const USAGE = [
   'Qstamp ' + pkg.version,
   '',
   'qstamp hash <file...> [--alg sha3-256|sha256]',
-  'qstamp stamp <file...> --seed-file <path> --index <n> [--kind <kind>] [--alg <alg>] [--rpc <url>] [--out <dir>] [--max-fee <quon>] [--force]',
-  'qstamp complete <pending.json> [--tx <id>] [--rpc <url>] [--force]',
-  'qstamp verify <receipt.json> (--file <path> | --digest <hex>) [--rpc <url>]... [--json]',
+  'qstamp stamp <file...> --seed-file <path> --index <n> [--kind <kind>] [--alg <alg>] [--rpc <url>]... [--trust-single-endpoint] [--out <dir>] [--max-fee <quon>] [--force]',
+  'qstamp complete <pending.json> [--tx <id>] [--rpc <url>]... [--trust-single-endpoint] [--force]',
+  'qstamp verify <receipt.json> (--file <path> | --digest <hex>) [--rpc <url>]... [--trust-single-endpoint] [--json]',
+  '',
+  'Chain data is accepted only when at least two independent endpoints agree, pass --rpc once for each.',
+  'Use --trust-single-endpoint to rely on one endpoint, which can then invent chain data alone.',
   'qstamp kinds',
 ].join('\n');
 
 const FLAGS = {
   hash: { alg: 'value' },
-  stamp: { 'seed-file': 'value', index: 'value', kind: 'value', alg: 'value', rpc: 'value', out: 'value', 'max-fee': 'value', network: 'value', force: 'bool' },
-  complete: { rpc: 'value', tx: 'value', force: 'bool' },
-  verify: { file: 'value', digest: 'value', rpc: 'multi', json: 'bool' },
+  stamp: { 'seed-file': 'value', index: 'value', kind: 'value', alg: 'value', rpc: 'multi', 'trust-single-endpoint': 'bool', out: 'value', 'max-fee': 'value', network: 'value', force: 'bool' },
+  complete: { rpc: 'multi', 'trust-single-endpoint': 'bool', tx: 'value', force: 'bool' },
+  verify: { file: 'value', digest: 'value', rpc: 'multi', 'trust-single-endpoint': 'bool', json: 'bool' },
   kinds: {},
   help: {},
   version: {},
@@ -241,7 +244,8 @@ async function cmdStamp(positional, flags) {
     writePrivate(pendingFile, { format: CLI_PENDING, outputs, records, pending: null });
     const receipts = await qstamp.stamp({
       network: flags.network || 'testnet',
-      rpc: flags.rpc,
+      clients: flags.rpc,
+      trustSingleEndpoint: !!flags['trust-single-endpoint'],
       seed,
       index,
       kind: flags.kind || 'file',
@@ -298,7 +302,7 @@ async function cmdComplete(positional, flags) {
     if (pending.tx && pending.tx !== flags.tx) throw usageError('the pending file already names a different transaction');
     pending.tx = flags.tx;
   }
-  const receipts = await qstamp.complete(pending, { rpc: flags.rpc });
+  const receipts = await qstamp.complete(pending, { clients: flags.rpc, trustSingleEndpoint: !!flags['trust-single-endpoint'] });
   if (receipts.length !== outputs.length) throw new Error('the pending file is inconsistent');
   saveReceipts(outputs, receipts, !!flags.force);
   fs.unlinkSync(positional[0]);
@@ -310,7 +314,7 @@ async function cmdVerify(positional, flags) {
   if (positional.length !== 1) throw usageError('name exactly one receipt');
   if ((flags.file === undefined) === (flags.digest === undefined)) throw usageError('pass exactly one of --file or --digest so the record is checked');
   const receipt = readJson(positional[0], MAX_RECEIPT_BYTES, 'receipt');
-  const result = await qstamp.verify(receipt, { file: flags.file, digest: flags.digest, clients: flags.rpc });
+  const result = await qstamp.verify(receipt, { file: flags.file, digest: flags.digest, clients: flags.rpc, trustSingleEndpoint: !!flags['trust-single-endpoint'] });
   if (flags.json) {
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   } else {
@@ -324,7 +328,7 @@ async function cmdVerify(positional, flags) {
       const when = Number.isNaN(t.getTime()) ? String(receipt.anchor.time) : t.toISOString();
       process.stdout.write('VALID  stamped no later than ' + when + ' in block ' + receipt.anchor.height + ' by ' + receipt.anchor.sender + '\n');
     } else if (result.status === 'indeterminate') {
-      process.stdout.write('INDETERMINATE  the chain could not be consulted, try again or use another endpoint\n');
+      process.stdout.write('INDETERMINATE  the chain could not be consulted or the endpoints did not agree, try again with independent endpoints\n');
     } else {
       process.stdout.write('INVALID\n');
     }
