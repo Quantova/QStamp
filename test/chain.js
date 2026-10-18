@@ -111,17 +111,25 @@ function headerBytes(height, time, eventRoot, transactionRoot) {
   ]);
 }
 
-const CHECKPOINT_HEADER = headerBytes(0, NETWORKS.testnet.genesisTime, Buffer.alloc(32), Buffer.alloc(32));
-const CHECKPOINT = { height: 0, hash: sha3(CHECKPOINT_HEADER).toString('hex') };
+function checkpointHeader(genesis) {
+  return headerBytes(0, NETWORKS.testnet.genesisTime, Buffer.from(genesis, 'hex'), Buffer.alloc(32));
+}
 
-function checkpointReply(epoch, chainId) {
-  return { height: 0, epoch, chain_id: chainId, header_bytes: CHECKPOINT_HEADER.toString('hex'), header_hash: CHECKPOINT.hash, certificate: '00' };
+function checkpointOf(genesis) {
+  return { height: 0, hash: sha3(checkpointHeader(genesis)).toString('hex') };
+}
+
+const CHECKPOINT = checkpointOf(NETWORKS.testnet.genesis);
+
+function checkpointReply(epoch, chainId, genesis) {
+  const bytes = checkpointHeader(genesis || NETWORKS.testnet.genesis);
+  return { height: 0, epoch, chain_id: chainId, header_bytes: bytes.toString('hex'), header_hash: sha3(bytes).toString('hex'), certificate: '00' };
 }
 
 function testNetwork(overrides) {
   const base = JSON.parse(JSON.stringify(NETWORKS.testnet));
   const o = Object.assign({}, overrides || {});
-  if (o.finality && o.finality.rosters && !('checkpoint' in o.finality)) o.finality = Object.assign({ checkpoint: CHECKPOINT }, o.finality);
+  if (o.finality && o.finality.rosters && !('checkpoint' in o.finality)) o.finality = Object.assign({ checkpoint: checkpointOf(o.genesis || base.genesis) }, o.finality);
   return deepFreeze(Object.assign(base, o));
 }
 
@@ -216,7 +224,7 @@ function makeChain(opts) {
     };
   };
   chain.finalityAt = (h) => {
-    if (h === 0) return checkpointReply(chain.epoch, chain.chainId);
+    if (h === 0) return checkpointReply(chain.epoch, chain.chainId, chain.genesis);
     const b = chain.blocks.get(h);
     if (!b) return null;
     const bytes = chain.headerAt(h, b.time);
@@ -374,4 +382,4 @@ function gateway(chain, overrides) {
 
 const SEED = new Uint8Array(32).fill(7);
 
-module.exports = { makeChain, client, gateway, encode, SEED, testNetwork, CHECKPOINT, checkpointReply, merkleRoot, merkleSteps, headerBytes, wrapperBytes, sha3 };
+module.exports = { makeChain, client, gateway, encode, SEED, testNetwork, CHECKPOINT, checkpointOf, checkpointReply, merkleRoot, merkleSteps, headerBytes, wrapperBytes, sha3 };
