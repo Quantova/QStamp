@@ -9,6 +9,7 @@ const path = require('path');
 const crypto = require('crypto');
 const qstamp = require('..');
 const { readRegular } = require('../lib/hash');
+const D = require('../lib/domain');
 const pkg = require('../package.json');
 
 const CLI_PENDING = 'qstamp-cli-pending/1';
@@ -24,11 +25,14 @@ const USAGE = [
   'qstamp complete <pending.json> [--tx <id>] [--rpc <url>]... [--trust-single-endpoint] [--allow-endpoint <host>]... [--allow-loopback] [--force]',
   'qstamp verify <receipt.json> (--file <path> | --digest <hex>) [--expect-sender <address>]... [--rpc <url>]... [--trust-custom-endpoints] [--allow-endpoint <host>]... [--allow-loopback] [--json]',
   'qstamp kinds',
+  'qstamp domain [--record <ledger.json> --contract <address> --genesis <hex> [--domain <n>]]',
   '',
   'A receipt is reported VALID only when its anchor is proven, by a finality certificate of the validators or by official endpoints of two different operators.',
   'A receipt confirmed only by one operator or by endpoints you chose is reported UNPROVEN and exits with status 3.',
   'Endpoints other than the official ones are consulted by verify only with --trust-custom-endpoints.',
   'Stamping accepts chain data only when at least two independent endpoints agree, or with --trust-single-endpoint.',
+  'domain prints a fresh random 64 bit deployment domain for the issuer and council templates. With --record it also writes the domain, the contract and the genesis hash',
+  'to a ledger and refuses a domain that the ledger already holds for the same contract, so an order signed for one deployment is never accepted by another.',
 ].join('\n');
 
 const FLAGS = {
@@ -37,6 +41,7 @@ const FLAGS = {
   complete: { rpc: 'multi', 'trust-single-endpoint': 'bool', 'allow-endpoint': 'multi', 'allow-loopback': 'bool', tx: 'value', force: 'bool' },
   verify: { file: 'value', digest: 'value', 'expect-sender': 'multi', rpc: 'multi', 'trust-single-endpoint': 'bool', 'trust-custom-endpoints': 'bool', 'allow-endpoint': 'multi', 'allow-loopback': 'bool', json: 'bool' },
   kinds: {},
+  domain: { record: 'value', contract: 'value', genesis: 'value', domain: 'value' },
   help: {},
   version: {},
 };
@@ -249,6 +254,27 @@ async function digestOf(file, alg) {
   }
 }
 
+function cmdDomain(positional, flags) {
+  if (positional.length > 0) throw usageError('qstamp domain takes no file names');
+  const recording = flags.record !== undefined;
+  if (!recording && (flags.contract !== undefined || flags.genesis !== undefined || flags.domain !== undefined)) {
+    throw usageError('--contract, --genesis and --domain are used only with --record');
+  }
+  if (!recording) {
+    process.stdout.write(D.deploymentDomain() + '\n');
+    return 0;
+  }
+  if (flags.contract === undefined || flags.genesis === undefined) throw usageError('--record needs --contract and --genesis');
+  let record;
+  try {
+    record = D.recordDomain(flags.record, { contract: flags.contract, genesis: flags.genesis.toLowerCase(), domain: flags.domain });
+  } catch (e) {
+    throw usageError(e.message);
+  }
+  process.stdout.write(record.domain + '\n');
+  return 0;
+}
+
 async function cmdHash(positional, flags) {
   if (positional.length === 0) throw usageError('name at least one file');
   const alg = flags.alg || 'sha3-256';
@@ -419,6 +445,7 @@ async function main() {
   if (command === 'stamp') return cmdStamp(positional, flags);
   if (command === 'complete') return cmdComplete(positional, flags);
   if (command === 'verify') return cmdVerify(positional, flags);
+  if (command === 'domain') return cmdDomain(positional, flags);
   for (const [name, value] of Object.entries(qstamp.KINDS)) process.stdout.write(value + '  ' + name + '\n');
   return 0;
 }

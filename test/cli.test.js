@@ -119,3 +119,56 @@ test('devices, pipes, links and missing files are refused at once with the input
   fs.writeFileSync(dup, JSON.stringify(receipt).replace('{', '{"root":"00",'));
   assert.strictEqual((await quick(['verify', dup, '--digest', '00'.repeat(32)])).code, 1);
 });
+
+test('a deployment domain is a fresh non zero 64 bit number and a ledger refuses to record one twice for a contract', async (t) => {
+  const D = require('../lib/domain');
+  const seen = new Set();
+  let high = false;
+  for (let i = 0; i < 256; i += 1) {
+    const d = qstamp.deploymentDomain();
+    assert.match(d, /^[1-9][0-9]{0,19}$/);
+    assert.ok(BigInt(d) > 0n && BigInt(d) < 1n << 64n, d);
+    if (BigInt(d) >= 1n << 63n) high = true;
+    seen.add(d);
+  }
+  assert.strictEqual(seen.size, 256);
+  assert.ok(high, 'the domain is drawn over the full 64 bit range');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qstamp-domain-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const ledger = path.join(dir, 'domains.json');
+  const contract = qstamp.NETWORKS.testnet.contract;
+  const genesis = qstamp.NETWORKS.testnet.genesis;
+  const later = 'ab'.repeat(32);
+  const first = qstamp.recordDomain(ledger, { contract, genesis });
+  assert.match(first.domain, /^[1-9][0-9]*$/);
+  assert.throws(() => qstamp.recordDomain(ledger, { contract, genesis: later, domain: first.domain }), /already recorded for the contract/);
+  assert.throws(() => qstamp.recordDomain(ledger, { contract: contract.toLowerCase(), genesis: later, domain: BigInt(first.domain) }), /already recorded for the contract/);
+  assert.throws(() => qstamp.recordDomain(ledger, { contract, genesis }), /on this genesis is already recorded/);
+  const second = qstamp.recordDomain(ledger, { contract, genesis: later });
+  assert.notStrictEqual(second.domain, first.domain);
+  assert.deepStrictEqual(D.readLedger(ledger).deployments.map((d) => [d.contract, d.genesis, d.domain]), [[contract, genesis, first.domain], [contract, later, second.domain]]);
+  for (const domain of ['0', '18446744073709551616', '-1', '01', '1.5', 7]) {
+    assert.throws(() => qstamp.recordDomain(ledger, { contract, genesis: 'cd'.repeat(32), domain }), /deployment domain is a whole number/, String(domain));
+  }
+  assert.throws(() => qstamp.recordDomain(ledger, { contract: 'not an address', genesis }), /not a Quantova address/);
+  assert.throws(() => qstamp.recordDomain(ledger, { contract, genesis: 'AB'.repeat(32) }), /64 lowercase hexadecimal/);
+  fs.writeFileSync(path.join(dir, 'bad.json'), '{"format":"other","deployments":[]}');
+  assert.throws(() => qstamp.recordDomain(path.join(dir, 'bad.json'), { contract, genesis }), /is not a qstamp-deployment-domains\/1 file/);
+
+  const printed = await run(['domain']);
+  assert.strictEqual(printed.code, 0, printed.stderr);
+  assert.match(printed.stdout, /^[1-9][0-9]{0,19}\n$/);
+  const cliLedger = path.join(dir, 'cli.json');
+  const recorded = await run(['domain', '--record', cliLedger, '--contract', contract, '--genesis', genesis]);
+  assert.strictEqual(recorded.code, 0, recorded.stderr);
+  const value = recorded.stdout.trim();
+  const again = await run(['domain', '--record', cliLedger, '--contract', contract, '--genesis', later, '--domain', value]);
+  assert.strictEqual(again.code, 64);
+  assert.match(again.stderr, /already recorded for the contract/);
+  const stray = await run(['domain', '--contract', contract]);
+  assert.strictEqual(stray.code, 64);
+  assert.match(stray.stderr, /used only with --record/);
+  const partial = await run(['domain', '--record', cliLedger, '--contract', contract]);
+  assert.strictEqual(partial.code, 64);
+  assert.match(partial.stderr, /needs --contract and --genesis/);
+});
