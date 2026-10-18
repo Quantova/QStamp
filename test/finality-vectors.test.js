@@ -21,7 +21,7 @@ const ML_DSA_65_PK_BYTES = 1952;
 const ML_DSA_65_SIG_BYTES = 3309;
 
 function pinnedFor(roster) {
-  return testNetwork({ finality: { epochBlocks: V.epoch_blocks, rosters: { [V.epoch]: V.rosters[roster] } } });
+  return testNetwork({ finality: { epochBlocks: V.epoch_blocks, rosters: { [V.epoch]: roster } } });
 }
 
 function finalityOf(s, block) {
@@ -81,13 +81,13 @@ function serve(s, over) {
   });
 }
 
-async function check(s, endpoints, extra) {
+async function check(s, endpoints, extra, roster) {
   const gws = await Promise.all(endpoints.map((over) => serve(s, over)));
   const rpc = gws.map((g, i) => (i % 2 === 0 ? 'http://127.0.0.1:' : 'http://localhost:') + g.port);
   const opts = Object.assign({ bytes: Buffer.from(s.record, 'hex'), rpc, trustCustomEndpoints: true, allowLoopback: true }, extra || {});
   if (rpc.length === 1) opts.trustSingleEndpoint = true;
   try {
-    return await verifyWith(pinnedFor(s.roster), s.receipt, opts, null);
+    return await verifyWith(pinnedFor(roster || V.rosters[s.roster]), s.receipt, opts, null);
   } finally {
     await Promise.all(gws.map((g) => g.close()));
   }
@@ -126,15 +126,15 @@ function headerFields(bytes) {
 function certificateFields(bytes) {
   const out = [];
   let at = 0;
-  const take = (name, n, signed) => {
-    out.push({ name, at, len: n, signed: signed !== false });
+  const take = (name, n, membership) => {
+    out.push({ name, at, len: n, membership: membership === true });
     at += n;
   };
   const u64 = () => Number(bytes.readBigUInt64LE(at));
-  const blob = (name, signed) => {
+  const blob = (name, membership) => {
     const n = u64();
     take(name + ' length', 8);
-    take(name, n, signed);
+    take(name, n, membership);
   };
   const block = (p) => {
     take(p + 'block height', 8);
@@ -155,11 +155,11 @@ function certificateFields(bytes) {
     for (const f of ['from', 'height', 'slot', 'view']) take(p + f, 8);
     blob(p + 'committee');
     block(p);
-    take(p + 'membership position', 8, false);
-    blob(p + 'membership preimage', false);
+    take(p + 'membership position', 8, true);
+    blob(p + 'membership preimage', true);
     const siblings = u64();
     take(p + 'membership path length', 8);
-    for (let j = 0; j < siblings; j += 1) blob(p + 'membership sibling ' + j, false);
+    for (let j = 0; j < siblings; j += 1) blob(p + 'membership sibling ' + j, true);
     blob(p + 'signature');
   }
   take('committee reveal count', 8);
@@ -179,7 +179,7 @@ test('the vectors pin the testnet chain and well formed rosters', () => {
   assert.strictEqual(V.chain.contract, qstamp.NETWORKS.testnet.contract);
   assert.strictEqual(String(helpers.chainId(V.chain.name)), V.chain.id);
   assert.strictEqual(V.epoch, Math.floor(V.height / V.epoch_blocks));
-  assert.deepStrictEqual(V.source['Quantova-Chain'], 'b2491a594a9cfe075d71a0ad85b996099eb5d7cc');
+  assert.deepStrictEqual(V.source['Quantova-Chain'], '402a6f42505069f8c086360c3a203f50a380df78');
   assert.deepStrictEqual(V.source['QRC-CONSENSUS'], 'c3e731c8e7b371cddd9795b8a8f5261f4a46762b');
   assert.deepStrictEqual(V.source['Q-Crypto'], 'e47d6cd94e71c13b22e2990f8c2b0a2e3a2204d0');
   assert.deepStrictEqual(Object.keys(V.rosters).sort(), ['four', 'three']);
@@ -190,8 +190,15 @@ test('the vectors pin the testnet chain and well formed rosters', () => {
       assert.match(m.attest_pk, /^[0-9a-f]+$/);
       assert.strictEqual(m.attest_pk.length, ML_DSA_65_PK_BYTES * 2);
       assert.match(m.stake, /^[1-9][0-9]*$/);
+      assert.match(m.root, /^[0-9a-f]{64}$/);
+      assert.match(m.root_slots, /^[1-9][0-9]*$/);
     }
+    const served = { epoch: V.epoch, chain_id: V.chain.name, total_stake: String(roster.reduce((sum, m) => sum + BigInt(m.stake), 0n)), members: roster.map((m) => Object.assign({ bond_address: 'Q1' }, m)) };
+    assert.deepStrictEqual(F.rosterFromValidatorSet(served, V.epoch, V.chain.name), roster);
+    assert.deepStrictEqual(F.parseRoster(roster), roster);
   }
+  assert.deepStrictEqual(V.rosters.three, V.rosters.four.slice(0, 3));
+  assert.strictEqual(new Set(V.rosters.four.map((m) => m.root)).size, 4);
   for (const s of Object.values(S)) {
     assert.strictEqual(s.receipt.anchor.height, V.height);
     assert.strictEqual(s.receipt.anchor.time, V.time);
@@ -432,38 +439,107 @@ test('a one byte change in any field of the header or the certificate never prov
   assert.strictEqual(cfields.filter((f) => /signature$/.test(f.name)).every((f) => f.len === ML_DSA_65_SIG_BYTES), true);
   const variants = [];
   for (const f of hfields) variants.push({ what: 'header ' + f.name, header: flipped(block.header_bytes, f.at) });
-  for (const f of cfields) variants.push({ what: 'certificate ' + f.name, certificate: flipped(block.certificate, f.at), signed: f.signed });
+  for (const f of cfields) variants.push({ what: 'certificate ' + f.name, certificate: flipped(block.certificate, f.at), membership: f.membership });
   for (let at = 0; at < header.length; at += 1) variants.push({ what: 'header byte ' + at, header: flipped(block.header_bytes, at) });
   const stride = Math.floor(cert.length / 211);
   for (let at = 0; at < cert.length; at += stride) {
     const f = cfields.find((x) => at >= x.at && at < x.at + x.len);
-    variants.push({ what: 'certificate byte ' + at + ' in ' + f.name, certificate: flipped(block.certificate, at), signed: f.signed });
+    variants.push({ what: 'certificate byte ' + at + ' in ' + f.name, certificate: flipped(block.certificate, at), membership: f.membership });
   }
   assert.ok(variants.length >= 200 + hfields.length + cfields.length);
   let refusedCount = 0;
-  let unsigned = 0;
+  let membership = 0;
   for (const v of variants) {
     const headerHex = v.header || block.header_bytes;
     const certHex = v.certificate || block.certificate;
     const mutated = Object.assign({}, block, { header_bytes: headerHex, header_hash: sha3(Buffer.from(headerHex, 'hex')).toString('hex'), certificate: certHex });
     const r = await check(s, [{ block: mutated, shown: block }]);
     let direct = null;
+    let reason = '';
     try {
       direct = finalityOf(s, mutated);
     } catch (e) {
       direct = null;
+      reason = String((e && e.message) || e);
     }
-    if (v.signed === false) {
-      unsigned += 1;
-      assert.ok(r.status !== 'valid' || (direct && String(direct.hash).toLowerCase() === block.header_hash), v.what);
-    } else {
-      assert.notStrictEqual(r.status, 'valid', v.what);
-      assert.strictEqual(qstamp.isProven(r), false, v.what);
-      assert.ok(r.notices.some((n) => /malformed finality proof|finality certificate served by .* does not verify/.test(n)), v.what + ' ' + JSON.stringify(r.notices));
-      assert.strictEqual(direct, null, v.what);
-      refusedCount += 1;
+    assert.notStrictEqual(r.status, 'valid', v.what);
+    assert.strictEqual(qstamp.isProven(r), false, v.what);
+    assert.ok(r.notices.some((n) => /malformed finality proof|finality certificate served by .* does not verify/.test(n)), v.what + ' ' + JSON.stringify(r.notices));
+    assert.strictEqual(direct, null, v.what);
+    if (v.membership) {
+      assert.match(reason, /does not prove its committee membership/, v.what);
+      membership += 1;
     }
+    refusedCount += 1;
   }
-  assert.ok(refusedCount >= 200, String(refusedCount));
-  assert.ok(unsigned > 0);
+  assert.strictEqual(refusedCount, variants.length);
+  assert.ok(refusedCount >= 200 + hfields.length + cfields.length, String(refusedCount));
+  assert.ok(membership >= 4 * 8, String(membership));
+});
+
+function credentialSpan(fields, i) {
+  const p = 'attestation ' + i + ' membership ';
+  const parts = fields.filter((f) => f.name.startsWith(p));
+  const start = parts[0].at;
+  const last = parts[parts.length - 1];
+  return [start, last.at + last.len];
+}
+
+test('a roster with a wrong root or a certificate with a tampered credential never proves a receipt', async () => {
+  const s = S.a_all_sign;
+  const block = s.blocks[0];
+  const roster = V.rosters.four;
+  const at = (i, change) => roster.map((m, k) => (k === i ? Object.assign({}, m, change) : Object.assign({}, m)));
+  const rosters = [
+    ['a flipped root', at(0, { root: flipped(roster[0].root, 31) })],
+    ['the root of another validator', at(1, { root: roster[2].root })],
+    ['swapped roots', roster.map((m, k) => Object.assign({}, m, { root: roster[(k + 1) % roster.length].root }))],
+    ['a root of another slot count', at(2, { root_slots: String(Number(roster[2].root_slots) * 2) })],
+    ['a root of fewer slots', at(3, { root_slots: '1' })],
+  ];
+  for (const [what, wrong] of rosters) {
+    assert.throws(() => helpers.finality(BigInt(V.chain.id), block.header_bytes, block.certificate, JSON.stringify(wrong)), /does not prove its committee membership/, what);
+    const r = await check(s, [{}, {}], null, wrong);
+    assert.notStrictEqual(r.status, 'valid', what);
+    assert.strictEqual(qstamp.isProven(r), false, what);
+    assert.ok(r.notices.some((n) => /does not verify against the pinned validator roster/.test(n)), what + ' ' + JSON.stringify(r.notices));
+  }
+  for (const key of ['root', 'root_slots']) {
+    const missing = roster.map((m) => {
+      const copy = Object.assign({}, m);
+      delete copy[key];
+      return copy;
+    });
+    assert.throws(() => helpers.finality(BigInt(V.chain.id), block.header_bytes, block.certificate, JSON.stringify(missing)), /sortition root|root_slots/, key);
+    const r = await check(s, [{}, {}], null, missing);
+    assert.strictEqual(r.status, 'indeterminate', key);
+    assert.strictEqual(qstamp.isProven(r), false, key);
+  }
+  const cert = Buffer.from(block.certificate, 'hex');
+  const fields = certificateFields(cert);
+  const [a0, a1] = [credentialSpan(fields, 0), credentialSpan(fields, 1)];
+  assert.strictEqual(a0[1] - a0[0], a1[1] - a1[0]);
+  const borrowed = Buffer.from(cert);
+  cert.copy(borrowed, a0[0], a1[0], a1[1]);
+  const shifted = Buffer.from(cert);
+  const position = fields.find((f) => f.name === 'attestation 0 membership position');
+  shifted.writeBigUInt64LE(cert.readBigUInt64LE(position.at) + 1n, position.at);
+  const preimage = fields.find((f) => f.name === 'attestation 3 membership preimage');
+  const sibling = fields.find((f) => f.name === 'attestation 2 membership sibling 0');
+  const credentials = [
+    ['the credential of another validator', borrowed.toString('hex')],
+    ['another slot position', shifted.toString('hex')],
+    ['a changed preimage', flipped(block.certificate, preimage.at + preimage.len - 1)],
+    ['a changed path', flipped(block.certificate, sibling.at)],
+  ];
+  for (const [what, certificate] of credentials) {
+    const mutated = Object.assign({}, block, { certificate });
+    assert.throws(() => finalityOf(s, mutated), /does not prove its committee membership/, what);
+    const r = await check(s, [{ block: mutated }, { block: mutated }]);
+    assert.notStrictEqual(r.status, 'valid', what);
+    assert.strictEqual(qstamp.isProven(r), false, what);
+    assert.ok(r.notices.some((n) => /does not verify against the pinned validator roster/.test(n)), what + ' ' + JSON.stringify(r.notices));
+  }
+  const honest = await check(s, [{}, {}], null, roster);
+  assert.strictEqual(honest.status, 'valid');
 });

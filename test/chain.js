@@ -240,7 +240,7 @@ function makeChain(opts) {
       epoch,
       chain_id: chain.chainId,
       total_stake: total.toString(),
-      members: chain.roster.map((m) => ({ id: m.id, stake: m.stake, bond_address: m.bond_address, attest_pk: m.attest_pk })),
+      members: chain.roster.map((m) => ({ id: m.id, stake: m.stake, bond_address: m.bond_address, attest_pk: m.attest_pk, root: m.root, root_slots: m.root_slots })),
     };
   };
   chain.revoke = (contract, tag, keyHex, reason) => {

@@ -149,6 +149,8 @@ export interface RosterMember {
   id: number;
   stake: string;
   attest_pk: string;
+  root: string;
+  root_slots: string;
 }
 
 export interface Network {

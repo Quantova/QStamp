@@ -19,22 +19,21 @@ const { makeChain, client, gateway, SEED, testNetwork, encode, sha3, headerBytes
 const ML_DSA_65_PK_BYTES = 1952;
 
 const CHAIN_ID = BigInt(qcore.core.chainIdFromName(qstamp.NETWORKS.testnet.chainId));
-const ROSTER = [
-  { id: 1, stake: '40', attest_pk: 'a1'.repeat(16) },
-  { id: 2, stake: '30', attest_pk: 'b2'.repeat(16) },
-  { id: 3, stake: '30', attest_pk: 'c3'.repeat(16) },
-];
-const OUTSIDER = 'ee'.repeat(16);
+const rootOf = (id) => sha3(Buffer.from('sortition root of validator ' + id)).toString('hex');
+const member = (id, stake, b) => ({ id, stake, attest_pk: b.repeat(ML_DSA_65_PK_BYTES), root: rootOf(id), root_slots: '64' });
+const ROSTER = [member(1, '40', 'a1'), member(2, '30', 'b2'), member(3, '30', 'c3')];
+const OUTSIDER = 'ee'.repeat(ML_DSA_65_PK_BYTES);
 
 function sign(pk, hash, chainId) {
   return sha3(Buffer.from('stub'), Buffer.from(pk, 'hex'), Buffer.from(hash, 'hex'), Buffer.from(String(chainId))).toString('hex');
 }
 
-function certificate(ids, pkOf) {
+function certificate(ids, pkOf, credentialOf) {
   return (height, hash) => Buffer.from(JSON.stringify({
     height,
     hash,
     sigs: Object.fromEntries(ids.map((id) => [id, sign(pkOf ? pkOf(id) : ROSTER.find((m) => m.id === id).attest_pk, hash, CHAIN_ID)])),
+    credentials: Object.fromEntries(ids.map((id) => [id, credentialOf ? credentialOf(id) : rootOf(id)])),
   })).toString('hex');
 }
 
@@ -65,12 +64,17 @@ const stubHelpers = {
     if (cert.hash !== hash || cert.height !== header.height) throw new Error('the certificate does not name this header');
     let signed = 0n;
     let total = 0n;
-    for (const m of roster) total += BigInt(m.stake);
+    for (const m of roster) {
+      if (typeof m.root !== 'string' || !/^[0-9a-f]{64}$/.test(m.root)) throw new Error('a roster member needs its sortition root');
+      if (typeof m.root_slots !== 'string' || !/^[1-9][0-9]*$/.test(m.root_slots)) throw new Error('a roster member needs root_slots as a digit string');
+      total += BigInt(m.stake);
+    }
     for (const [id, sig] of Object.entries(cert.sigs)) {
-      const member = roster.find((m) => String(m.id) === id);
-      if (!member) throw new Error('an attestation comes from a validator outside the roster');
-      if (sig !== sign(member.attest_pk, hash, chainId)) throw new Error('an attestation signature does not verify');
-      signed += BigInt(member.stake);
+      const signer = roster.find((m) => String(m.id) === id);
+      if (!signer) throw new Error('an attestation comes from a validator outside the roster');
+      if (sig !== sign(signer.attest_pk, hash, chainId)) throw new Error('an attestation signature does not verify');
+      if (!cert.credentials || cert.credentials[id] !== signer.root) throw new Error('an attestation does not prove its committee membership');
+      signed += BigInt(signer.stake);
     }
     if (signed * 3n < total * 2n) throw new Error('the attesting validators hold less than two thirds of the stake');
     return JSON.stringify({
@@ -159,10 +163,9 @@ test('the corrected gateway replies are served and read through the guarded tran
   chain.certify = certificate([1, 2, 3]);
   const record = Buffer.from('read over http');
   const receipt = await stamped(chain, record);
-  const key = (b) => b.repeat(ML_DSA_65_PK_BYTES);
   chain.roster = [
-    { id: 1, stake: '40', bond_address: receipt.anchor.sender, attest_pk: key('a1') },
-    { id: 2, stake: '60', bond_address: receipt.anchor.sender, attest_pk: key('b2') },
+    Object.assign(member(1, '40', 'a1'), { bond_address: receipt.anchor.sender }),
+    Object.assign(member(2, '60', 'b2'), { bond_address: receipt.anchor.sender, root: rootOf(2).toUpperCase(), root_slots: '65536' }),
   ];
   const gw = await gateway(chain, { proofs: true });
   try {
@@ -178,7 +181,8 @@ test('the corrected gateway replies are served and read through the guarded tran
     await assert.rejects(r.transactionProof(encode('QTX', crypto.randomBytes(32))), (e) => e.code === 'QSTAMP_TRANSPORT' && e.reason === 'http 404');
     const set = await r.validatorSet(chain.epoch);
     assert.deepStrictEqual(Object.keys(set).sort(), ['chain_id', 'epoch', 'members', 'total_stake']);
-    assert.deepStrictEqual(F.rosterFromValidatorSet(set, chain.epoch, chain.chainId), chain.roster.map((m) => ({ id: m.id, stake: m.stake, attest_pk: m.attest_pk })));
+    assert.deepStrictEqual(Object.keys(set.members[0]).sort(), ['attest_pk', 'bond_address', 'id', 'root', 'root_slots', 'stake']);
+    assert.deepStrictEqual(F.rosterFromValidatorSet(set, chain.epoch, chain.chainId), chain.roster.map((m) => ({ id: m.id, stake: m.stake, attest_pk: m.attest_pk, root: m.root.toLowerCase(), root_slots: m.root_slots })));
     await assert.rejects(r.validatorSet(chain.epoch + 1), (e) => e.code === 'QSTAMP_TRANSPORT' && e.reason === 'http 404');
   } finally {
     await gw.close();
@@ -187,8 +191,22 @@ test('the corrected gateway replies are served and read through the guarded tran
 
 test('a validator set is accepted only for the asked epoch and chain with a consistent total', () => {
   const pk = 'c3'.repeat(ML_DSA_65_PK_BYTES);
-  const good = { epoch: 3, chain_id: 'Q-test-net-1', total_stake: '70', members: [{ id: 1, stake: '30', bond_address: 'Q1X', attest_pk: pk }, { id: 2, stake: '40', bond_address: 'Q1Y', attest_pk: pk }] };
-  assert.strictEqual(F.rosterFromValidatorSet(good, 3, 'Q-test-net-1').length, 2);
+  const good = {
+    epoch: 3,
+    chain_id: 'Q-test-net-1',
+    total_stake: '70',
+    members: [
+      { id: 1, stake: '30', bond_address: 'Q1X', attest_pk: pk, root: rootOf(1), root_slots: '64' },
+      { id: 2, stake: '40', bond_address: 'Q1Y', attest_pk: pk, root: rootOf(2), root_slots: '1' },
+    ],
+  };
+  assert.deepStrictEqual(F.rosterFromValidatorSet(good, 3, 'Q-test-net-1').map((m) => [m.root, m.root_slots]), [[rootOf(1), '64'], [rootOf(2), '1']]);
+  const first = (change) => Object.assign({}, good, { members: [Object.assign({}, good.members[0], change), good.members[1]] });
+  const without = (key) => {
+    const m = Object.assign({}, good.members[0]);
+    delete m[key];
+    return Object.assign({}, good, { members: [m, good.members[1]] });
+  };
   const bad = [
     [Object.assign({}, good, { epoch: 2 }), 3, /another epoch/],
     [good, 3, /another chain/, 'Q-main-net-1'],
@@ -199,10 +217,91 @@ test('a validator set is accepted only for the asked epoch and chain with a cons
     [Object.assign({}, good, { members: [Object.assign({}, good.members[0], { stake: 30 })] }), 3, /not a whole number/],
     [Object.assign({}, good, { members: [Object.assign({}, good.members[0], { attest_pk: 'c3'.repeat(32) })] }), 3, /not an ML-DSA-65 public key/],
     [Object.assign({}, good, { members: [Object.assign({}, good.members[0], { bond_address: '' })] }), 3, /no bond address/],
+    [without('root'), 3, /a sortition root is not hex/],
+    [without('root_slots'), 3, /slot count of a sortition root/],
+    [first({ root: rootOf(1).slice(2) }), 3, /a sortition root is not 32 bytes/],
+    [first({ root: rootOf(1) + '00' }), 3, /a sortition root is not hex/],
+    [first({ root: 'zz' + rootOf(1).slice(2) }), 3, /a sortition root is not hex/],
+    [first({ root: Buffer.from(rootOf(1), 'hex') }), 3, /a sortition root is not hex/],
+    [first({ root_slots: 64 }), 3, /slot count of a sortition root/],
+    [first({ root_slots: '0' }), 3, /from 1 to 65536/],
+    [first({ root_slots: '65537' }), 3, /from 1 to 65536/],
+    [first({ root_slots: '064' }), 3, /slot count of a sortition root/],
+    [first({ root_slots: '-1' }), 3, /slot count of a sortition root/],
+    [first({ root_slots: '18446744073709551616' }), 3, /from 1 to 65536/],
   ];
   for (const [reply, epoch, pattern, name] of bad) {
     assert.throws(() => F.rosterFromValidatorSet(reply, epoch, name || 'Q-test-net-1'), pattern);
   }
+});
+
+test('the pinned roster hands every sortition root to the client core and a roster without them is refused', async () => {
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const record = Buffer.from('a roster with roots');
+  const receipt = await stamped(chain, record);
+  const seen = [];
+  const watching = Object.assign({}, stubHelpers, {
+    finality(chainId, headerHex, certHex, rosterJson) {
+      seen.push(JSON.parse(rosterJson));
+      return stubHelpers.finality(chainId, headerHex, certHex, rosterJson);
+    },
+  });
+  const r = await verifyWith(pinned, receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: watching });
+  assert.strictEqual(r.status, 'valid');
+  assert.deepStrictEqual(seen, [ROSTER.map((m) => ({ id: m.id, stake: m.stake, attest_pk: m.attest_pk, root: m.root, root_slots: m.root_slots }))]);
+  const drop = (key) => ROSTER.map((m, i) => {
+    const copy = Object.assign({}, m);
+    if (i === 1) delete copy[key];
+    return copy;
+  });
+  const change = (field) => ROSTER.map((m, i) => (i === 1 ? Object.assign({}, m, field) : m));
+  const refused = [
+    [drop('root'), /a sortition root is not hex/],
+    [drop('root_slots'), /slot count of a sortition root/],
+    [change({ root: rootOf(2).slice(0, 62) }), /a sortition root is not 32 bytes/],
+    [change({ root_slots: 64 }), /slot count of a sortition root/],
+    [change({ root_slots: '65537' }), /from 1 to 65536/],
+    [change({ attest_pk: 'b2'.repeat(16) }), /not an ML-DSA-65 public key/],
+    [change({ stake: 30 }), /not a whole number/],
+    [change({ id: 1 }), /repeated id/],
+  ];
+  for (const [roster, pattern] of refused) {
+    const net = testNetwork({ finality: { epochBlocks: 2 ** 40, rosters: { 0: roster } } });
+    assert.throws(() => checkNetwork(net), (e) => /the network roster of epoch 0 is refused/.test(e.message) && pattern.test(e.message), String(pattern));
+    const v = await verifyWith(net, receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: watching });
+    assert.strictEqual(v.status, 'indeterminate', String(pattern));
+    assert.strictEqual(qstamp.isProven(v), false, String(pattern));
+    assert.ok(v.checks.some((c) => c.name === 'network' && !c.ok && pattern.test(c.detail)), String(pattern));
+    const direct = await F.proveAnchor({ net: { chainId: pinned.chainId, finality: { epochBlocks: 2 ** 40, rosters: { 0: roster } } }, helpers: watching, sources: only(chain).map((client) => ({ client, label: client.base })), receipt });
+    assert.strictEqual(direct.state, 'unavailable', String(pattern));
+    assert.match(direct.detail, /the validator roster pinned for epoch 0 is not used, because/);
+    assert.match(direct.detail, pattern);
+  }
+  assert.strictEqual(seen.length, 1);
+  for (const rosters of [{ x: ROSTER }, { '01': ROSTER }, { 0: {} }]) {
+    assert.throws(() => checkNetwork(testNetwork({ finality: { epochBlocks: 2 ** 40, rosters } })), /keyed by whole epoch numbers|not a list of validators/);
+  }
+  assert.strictEqual(checkNetwork(testNetwork({ finality: { epochBlocks: 2 ** 40, rosters: { 0: [] } } })).finality.rosters[0].length, 0);
+  assert.strictEqual(checkNetwork(pinned), pinned);
+});
+
+test('a pinned root that does not open the credential of a signer never proves a receipt', async () => {
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const record = Buffer.from('a credential for another root');
+  const receipt = await stamped(chain, record);
+  const opts = { bytes: record, clients: only(chain), trustCustomEndpoints: true };
+  const wrong = testNetwork({ finality: { epochBlocks: 2 ** 40, rosters: { 0: ROSTER.map((m, i) => (i === 0 ? Object.assign({}, m, { root: rootOf(9) }) : m)) } } });
+  const r = await verifyWith(wrong, receipt, opts, { helpers: stubHelpers });
+  assert.strictEqual(r.status, 'unproven');
+  assert.strictEqual(qstamp.isProven(r), false);
+  assert.ok(r.notices.some((n) => /does not verify against the pinned validator roster/.test(n)));
+  chain.certify = certificate([1, 2, 3], null, (id) => (id === 2 ? rootOf(1) : rootOf(id)));
+  const tampered = await stamped(chain, Buffer.from('a tampered credential'));
+  const t = await verifyWith(pinned, tampered, { bytes: Buffer.from('a tampered credential'), clients: only(chain), trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.strictEqual(t.status, 'unproven');
+  assert.strictEqual(qstamp.isProven(t), false);
 });
 
 test('the event and transaction proofs of the fake gateway verify with the published client core helpers', async () => {
@@ -315,11 +414,7 @@ test('less than two thirds of the stake never proves an anchor, even when a help
 });
 
 test('signatures from exactly two thirds of the stake prove an anchor, as the chain accepts', async () => {
-  const thirds = [
-    { id: 1, stake: '10', attest_pk: 'a1'.repeat(16) },
-    { id: 2, stake: '10', attest_pk: 'b2'.repeat(16) },
-    { id: 3, stake: '10', attest_pk: 'c3'.repeat(16) },
-  ];
+  const thirds = [member(1, '10', 'a1'), member(2, '10', 'b2'), member(3, '10', 'c3')];
   const net = testNetwork({ finality: { epochBlocks: 2 ** 40, rosters: { 0: thirds } } });
   const chain = makeChain();
   chain.certify = certificate([1, 2], (id) => thirds.find((m) => m.id === id).attest_pk);
@@ -611,7 +706,7 @@ test('the proof helpers are detected on the client core under their published na
   assert.strictEqual(F.helpersComplete(F.helpersFrom({ core: { verifyFinality: f, verifyEvent: f, decodeEvent: f, chainIdFromName: f } })), false);
   const today = F.helpersFrom(qcore);
   assert.ok(F.helpersComplete(today));
-  assert.strictEqual(require('@quantovainc/qcore/package.json').version, '0.5.8');
+  assert.strictEqual(require('@quantovainc/qcore/package.json').version, '0.5.9');
   assert.strictEqual(require('@quantovainc/qcore/package.json').version, require('../package.json').dependencies['@quantovainc/qcore']);
   for (const name of ['verifyFinality', 'verifyEvent', 'decodeEvent', 'verifyTransaction', 'chainIdFromName']) assert.strictEqual(typeof qcore.core[name], 'function', name);
 });
