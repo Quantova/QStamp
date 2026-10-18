@@ -111,9 +111,18 @@ function headerBytes(height, time, eventRoot, transactionRoot) {
   ]);
 }
 
+const CHECKPOINT_HEADER = headerBytes(0, NETWORKS.testnet.genesisTime, Buffer.alloc(32), Buffer.alloc(32));
+const CHECKPOINT = { height: 0, hash: sha3(CHECKPOINT_HEADER).toString('hex') };
+
+function checkpointReply(epoch, chainId) {
+  return { height: 0, epoch, chain_id: chainId, header_bytes: CHECKPOINT_HEADER.toString('hex'), header_hash: CHECKPOINT.hash, certificate: '00' };
+}
+
 function testNetwork(overrides) {
   const base = JSON.parse(JSON.stringify(NETWORKS.testnet));
-  return deepFreeze(Object.assign(base, overrides || {}));
+  const o = Object.assign({}, overrides || {});
+  if (o.finality && o.finality.rosters && !('checkpoint' in o.finality)) o.finality = Object.assign({ checkpoint: CHECKPOINT }, o.finality);
+  return deepFreeze(Object.assign(base, o));
 }
 
 function makeChain(opts) {
@@ -207,6 +216,7 @@ function makeChain(opts) {
     };
   };
   chain.finalityAt = (h) => {
+    if (h === 0) return checkpointReply(chain.epoch, chain.chainId);
     const b = chain.blocks.get(h);
     if (!b) return null;
     const bytes = chain.headerAt(h, b.time);
@@ -364,4 +374,4 @@ function gateway(chain, overrides) {
 
 const SEED = new Uint8Array(32).fill(7);
 
-module.exports = { makeChain, client, gateway, encode, SEED, testNetwork, merkleRoot, merkleSteps, headerBytes, wrapperBytes, sha3 };
+module.exports = { makeChain, client, gateway, encode, SEED, testNetwork, CHECKPOINT, checkpointReply, merkleRoot, merkleSteps, headerBytes, wrapperBytes, sha3 };

@@ -610,6 +610,7 @@ test('two verified certificates for different blocks at the anchor height refute
   const fork = only(chain, {
     finality: (c, h) => {
       const real = c.finalityAt(Number(h));
+      if (Number(h) === 0) return real;
       const header = F.decodeHeader(Buffer.from(real.header_bytes, 'hex'));
       const bytes = headerBytes(header.height, header.time + 50, header.eventRoot);
       const hash = sha3(bytes).toString('hex');
@@ -810,6 +811,23 @@ test('a network refuses a finality pin for another genesis or a malformed checkp
   }
   assert.doesNotThrow(() => checkNetwork(genesisNetwork(pinned.genesis, ROSTER, { checkpoint: { height: 0, hash: pinned.genesis } })));
   assert.doesNotThrow(() => checkNetwork(testNetwork({ finality: { epochBlocks: 2 ** 40, rosters: { 0: ROSTER } } })));
+  assert.throws(() => checkNetwork(testNetwork({ finality: { checkpoint: null, epochBlocks: 2 ** 40, rosters: { 0: ROSTER } } })), /pins validator rosters without a checkpoint/);
+  assert.doesNotThrow(() => checkNetwork(testNetwork({ finality: { checkpoint: null, epochBlocks: 2 ** 40, rosters: { 0: [] } } })));
+});
+
+test('without a pinned checkpoint the genesis an endpoint names never ties its proof to the pinned genesis', async () => {
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const later = genesisNetwork(OTHER_GENESIS);
+  const { receipt } = stampedFor(chain, later, 'a twin chain that claims the later genesis');
+  const claims = only(chain, { nodeInfo: (c) => ({ chain_id: c.chainId, genesis_hash: OTHER_GENESIS, head_height: c.height }) });
+  const sources = claims.map((c) => ({ client: c, label: c.base }));
+  const unpinned = { chainId: later.chainId, genesis: later.genesis, finality: { genesis: later.genesis, checkpoint: null, epochBlocks: 2 ** 40, rosters: { 0: ROSTER } } };
+  const r = await F.proveAnchor({ net: unpinned, receipt, helpers: stubHelpers, sources });
+  assert.notStrictEqual(r.state, 'proven');
+  assert.match(r.detail, /pins no checkpoint/);
+  const held = await F.proveAnchor({ net: later, receipt, helpers: stubHelpers, sources });
+  assert.notStrictEqual(held.state, 'proven');
 });
 
 test('no finality request is made while no roster is pinned', async () => {
@@ -833,7 +851,7 @@ test('the proof helpers are detected on the client core under their published na
   assert.strictEqual(F.helpersComplete(F.helpersFrom({ core: { verifyFinality: f, verifyEvent: f, decodeEvent: f, chainIdFromName: f } })), false);
   const today = F.helpersFrom(qcore);
   assert.ok(F.helpersComplete(today));
-  assert.strictEqual(require('@quantovainc/qcore/package.json').version, '0.6.1');
+  assert.strictEqual(require('@quantovainc/qcore/package.json').version, '0.7.0');
   assert.strictEqual(String(qcore.core.chainIdFromName(qstamp.NETWORKS.testnet.chainId)), '6995079887857407393');
   assert.throws(() => qcore.core.chainIdFromName('Q-test-net-1'), /retired/);
   assert.strictEqual(require('@quantovainc/qcore/package.json').version, require('../package.json').dependencies['@quantovainc/qcore']);

@@ -12,7 +12,7 @@ const wire = require('../lib/wire');
 const F = require('../lib/finality');
 const { verifyWith } = require('../lib/verify');
 const { decode } = require('../lib/bech32m');
-const { testNetwork, encode, sha3 } = require('./chain');
+const { testNetwork, encode, sha3, checkpointReply } = require('./chain');
 const V = require('./vectors/finality.json');
 
 const helpers = F.helpersFrom(qcore);
@@ -42,7 +42,7 @@ function serve(s, over) {
     get_transaction: (b) => (o.transaction ? o.transaction(b) : b.tx_id === s.receipt.anchor.tx ? Object.assign({}, s.transaction) : { status: 'unknown' }),
     get_events: (b) => ({ events: b.height === V.height ? (o.events || s.events).map((e) => Object.assign({}, e)) : [] }),
     get_block: (b) => (b.height === V.height ? { block: encode('QBK', Buffer.from((o.shown || block).header_hash, 'hex')), height: V.height, time: o.shown ? V.time : time } : null),
-    get_finality: (b) => (b.height === V.height ? {
+    get_finality: (b) => (b.height === 0 ? checkpointReply(V.epoch, V.chain.name) : b.height === V.height ? {
       height: V.height, epoch: V.epoch, chain_id: V.chain.name, header_bytes: block.header_bytes, header_hash: block.header_hash, certificate: block.certificate,
     } : null),
     get_event_proof: (b) => (b.height === V.height && b.index === block.index ? {
