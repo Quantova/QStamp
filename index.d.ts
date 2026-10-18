@@ -49,6 +49,32 @@ export interface EndpointEntry {
   key?: string | Buffer;
 }
 
+export interface ProofStep {
+  sibling: string;
+  left: boolean;
+}
+
+export interface TransactionProof {
+  tx_id: string;
+  height: number;
+  index: number;
+  transaction_root: string;
+  leaf: string;
+  steps: ProofStep[];
+}
+
+export interface ChainReader {
+  nodeInfo(): Promise<unknown>;
+  transaction(txId: string): Promise<unknown>;
+  events(height: number): Promise<unknown>;
+  block(height: number): Promise<unknown>;
+  storageAt?(contract: string, keys: string[]): Promise<unknown>;
+  finality?(height: number): Promise<unknown>;
+  eventProof?(height: number, index: number): Promise<unknown>;
+  transactionProof?(txId: string): Promise<TransactionProof>;
+  validatorSet?(epoch: number): Promise<unknown>;
+}
+
 export interface ControlOptions {
   deadlineMs?: number;
   signal?: AbortSignal;
@@ -56,8 +82,8 @@ export interface ControlOptions {
 
 export interface EndpointOptions extends ControlOptions {
   rpc?: string | EndpointEntry | Array<string | EndpointEntry>;
-  client?: unknown;
-  clients?: Array<string | EndpointEntry | unknown>;
+  client?: ChainReader | unknown;
+  clients?: Array<string | EndpointEntry | ChainReader | unknown>;
   trustSingleEndpoint?: boolean;
   trustCustomEndpoints?: boolean;
   allowLoopback?: boolean;

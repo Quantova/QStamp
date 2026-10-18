@@ -16,7 +16,7 @@ concurrency:
 
 env:
   TEMPLATES_REPOSITORY: Quantova/Qstamp-Quanta-Smart-contract-example-
-  TEMPLATES_COMMIT: 07b16ffcab65c0e14d1a63cc5dcb2ba462bbf0cd
+  TEMPLATES_COMMIT: e99ba439ec1d327f63980fbc1f25dc7127ff90e7
 
 jobs:
   verify:

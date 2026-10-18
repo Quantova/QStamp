@@ -294,9 +294,9 @@
           "sealed_params": []
         },
         {
-          "name": "rotate",
-          "signature": "rotate(RotateOrder,Quorum<5 of 5,proposed>,Quorum<4 of 5,officials>)",
-          "selector": "b4ca64f2",
+          "name": "confirm_rotation",
+          "signature": "confirm_rotation(ConfirmOrder,Quorum<5 of 5,proposed>)",
+          "selector": "4a840317",
           "args": [
             {
               "key": "@caller",
@@ -339,148 +339,93 @@
               "width": 8
             },
             {
-              "key": "confirmations#expiry",
+              "key": "order.epoch",
               "offset": 136,
               "width": 8
             },
             {
-              "key": "confirmations#0#scheme",
+              "key": "order.armed",
               "offset": 144,
               "width": 8
             },
             {
-              "key": "confirmations#0#ptr",
+              "key": "confirmations#expiry",
               "offset": 152,
               "width": 8
             },
             {
-              "key": "confirmations#0#index",
+              "key": "confirmations#0#scheme",
               "offset": 160,
               "width": 8
             },
             {
-              "key": "confirmations#1#scheme",
+              "key": "confirmations#0#ptr",
               "offset": 168,
               "width": 8
             },
             {
-              "key": "confirmations#1#ptr",
+              "key": "confirmations#0#index",
               "offset": 176,
               "width": 8
             },
             {
-              "key": "confirmations#1#index",
+              "key": "confirmations#1#scheme",
               "offset": 184,
               "width": 8
             },
             {
-              "key": "confirmations#2#scheme",
+              "key": "confirmations#1#ptr",
               "offset": 192,
               "width": 8
             },
             {
-              "key": "confirmations#2#ptr",
+              "key": "confirmations#1#index",
               "offset": 200,
               "width": 8
             },
             {
-              "key": "confirmations#2#index",
+              "key": "confirmations#2#scheme",
               "offset": 208,
               "width": 8
             },
             {
-              "key": "confirmations#3#scheme",
+              "key": "confirmations#2#ptr",
               "offset": 216,
               "width": 8
             },
             {
-              "key": "confirmations#3#ptr",
+              "key": "confirmations#2#index",
               "offset": 224,
               "width": 8
             },
             {
-              "key": "confirmations#3#index",
+              "key": "confirmations#3#scheme",
               "offset": 232,
               "width": 8
             },
             {
-              "key": "confirmations#4#scheme",
+              "key": "confirmations#3#ptr",
               "offset": 240,
               "width": 8
             },
             {
-              "key": "confirmations#4#ptr",
+              "key": "confirmations#3#index",
               "offset": 248,
               "width": 8
             },
             {
-              "key": "confirmations#4#index",
+              "key": "confirmations#4#scheme",
               "offset": 256,
               "width": 8
             },
             {
-              "key": "approvals#expiry",
+              "key": "confirmations#4#ptr",
               "offset": 264,
               "width": 8
             },
             {
-              "key": "approvals#0#scheme",
+              "key": "confirmations#4#index",
               "offset": 272,
-              "width": 8
-            },
-            {
-              "key": "approvals#0#ptr",
-              "offset": 280,
-              "width": 8
-            },
-            {
-              "key": "approvals#0#index",
-              "offset": 288,
-              "width": 8
-            },
-            {
-              "key": "approvals#1#scheme",
-              "offset": 296,
-              "width": 8
-            },
-            {
-              "key": "approvals#1#ptr",
-              "offset": 304,
-              "width": 8
-            },
-            {
-              "key": "approvals#1#index",
-              "offset": 312,
-              "width": 8
-            },
-            {
-              "key": "approvals#2#scheme",
-              "offset": 320,
-              "width": 8
-            },
-            {
-              "key": "approvals#2#ptr",
-              "offset": 328,
-              "width": 8
-            },
-            {
-              "key": "approvals#2#index",
-              "offset": 336,
-              "width": 8
-            },
-            {
-              "key": "approvals#3#scheme",
-              "offset": 344,
-              "width": 8
-            },
-            {
-              "key": "approvals#3#ptr",
-              "offset": 352,
-              "width": 8
-            },
-            {
-              "key": "approvals#3#index",
-              "offset": 360,
               "width": 8
             }
           ],
@@ -490,33 +435,171 @@
               "param": "confirmations",
               "fields": [
                 "order.domain",
-                "order.deadline"
+                "order.deadline",
+                "order.epoch",
+                "order.armed"
               ],
               "field_types": [
+                "u64",
+                "u64",
                 "u64",
                 "u64"
               ],
               "field_widths": [
                 8,
+                8,
+                8,
                 8
               ],
-              "layout_hash": "b009960fea9136983c63fdd9843c210c286e10d5b80041a4541cf330a49edd5c"
+              "layout_hash": "daccc54c3d4cc46c3aaa01cbc7b413ed6e788067acd7eddfffabb775d82a244c"
+            }
+          ],
+          "sealed_params": []
+        },
+        {
+          "name": "rotate",
+          "signature": "rotate(RotateOrder,Quorum<4 of 5,officials>)",
+          "selector": "03838f94",
+          "args": [
+            {
+              "key": "@caller",
+              "offset": 0,
+              "width": 32
             },
+            {
+              "key": "@contract",
+              "offset": 32,
+              "width": 32
+            },
+            {
+              "key": "@time",
+              "offset": 64,
+              "width": 8
+            },
+            {
+              "key": "@chain",
+              "offset": 72,
+              "width": 8
+            },
+            {
+              "key": "@value",
+              "offset": 80,
+              "width": 8
+            },
+            {
+              "key": "@in_asset",
+              "offset": 88,
+              "width": 32
+            },
+            {
+              "key": "order.domain",
+              "offset": 120,
+              "width": 8
+            },
+            {
+              "key": "order.deadline",
+              "offset": 128,
+              "width": 8
+            },
+            {
+              "key": "order.epoch",
+              "offset": 136,
+              "width": 8
+            },
+            {
+              "key": "order.armed",
+              "offset": 144,
+              "width": 8
+            },
+            {
+              "key": "approvals#expiry",
+              "offset": 152,
+              "width": 8
+            },
+            {
+              "key": "approvals#0#scheme",
+              "offset": 160,
+              "width": 8
+            },
+            {
+              "key": "approvals#0#ptr",
+              "offset": 168,
+              "width": 8
+            },
+            {
+              "key": "approvals#0#index",
+              "offset": 176,
+              "width": 8
+            },
+            {
+              "key": "approvals#1#scheme",
+              "offset": 184,
+              "width": 8
+            },
+            {
+              "key": "approvals#1#ptr",
+              "offset": 192,
+              "width": 8
+            },
+            {
+              "key": "approvals#1#index",
+              "offset": 200,
+              "width": 8
+            },
+            {
+              "key": "approvals#2#scheme",
+              "offset": 208,
+              "width": 8
+            },
+            {
+              "key": "approvals#2#ptr",
+              "offset": 216,
+              "width": 8
+            },
+            {
+              "key": "approvals#2#index",
+              "offset": 224,
+              "width": 8
+            },
+            {
+              "key": "approvals#3#scheme",
+              "offset": 232,
+              "width": 8
+            },
+            {
+              "key": "approvals#3#ptr",
+              "offset": 240,
+              "width": 8
+            },
+            {
+              "key": "approvals#3#index",
+              "offset": 248,
+              "width": 8
+            }
+          ],
+          "signed_orders": [],
+          "quorum_orders": [
             {
               "param": "approvals",
               "fields": [
                 "order.domain",
-                "order.deadline"
+                "order.deadline",
+                "order.epoch",
+                "order.armed"
               ],
               "field_types": [
+                "u64",
+                "u64",
                 "u64",
                 "u64"
               ],
               "field_widths": [
                 8,
+                8,
+                8,
                 8
               ],
-              "layout_hash": "b009960fea9136983c63fdd9843c210c286e10d5b80041a4541cf330a49edd5c"
+              "layout_hash": "fae54374a1ec0cb649f15f350ad6f22016db71401bed35d52348a23c819f93d6"
             }
           ],
           "sealed_params": []
@@ -639,6 +722,11 @@
           "name": "RotationArmed",
           "signature": "RotationArmed(Q_Hash,u64)",
           "selector": "c8e4b554"
+        },
+        {
+          "name": "RotationConfirmed",
+          "signature": "RotationConfirmed(Q_Hash,u64,u64)",
+          "selector": "24618fa4"
         },
         {
           "name": "Rotated",

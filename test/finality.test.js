@@ -14,11 +14,11 @@ const F = require('../lib/finality');
 const { reader } = require('../lib/transport');
 const E = require('../lib/endpoints');
 const { checkNetwork } = require('../lib/networks');
-const { makeChain, client, gateway, SEED, testNetwork, encode, sha3, headerBytes, merkleRoot, merkleSteps } = require('./chain');
+const { makeChain, client, gateway, SEED, testNetwork, encode, sha3, headerBytes, wrapperBytes, merkleRoot, merkleSteps } = require('./chain');
 
 const ML_DSA_65_PK_BYTES = 1952;
 
-const CHAIN_ID = 7741n;
+const CHAIN_ID = BigInt(qcore.core.chainIdFromName(qstamp.NETWORKS.testnet.chainId));
 const ROSTER = [
   { id: 1, stake: '40', attest_pk: 'a1'.repeat(16) },
   { id: 2, stake: '30', attest_pk: 'b2'.repeat(16) },
@@ -74,12 +74,16 @@ const stubHelpers = {
     }
     if (signed * 3n < total * 2n) throw new Error('the attesting validators hold less than two thirds of the stake');
     return JSON.stringify({
-      height: String(header.height), hash, event_root: header.eventRoot.toString('hex'), time: String(header.time),
+      height: String(header.height), hash, event_root: header.eventRoot.toString('hex'), transaction_root: header.transactionRoot.toString('hex'), time: String(header.time),
       signed_stake: String(signed), total_stake: String(total),
     });
   },
   event(rootHex, leafHex, stepsJson) {
     return F.includedLocally(Buffer.from(rootHex, 'hex'), Buffer.from(leafHex, 'hex'), JSON.parse(stepsJson));
+  },
+  transaction(rootHex, txId, leafHex, stepsJson) {
+    const leaf = Buffer.from(leafHex, 'hex');
+    return encode('QTX', sha3(leaf)) === txId && F.includedLocally(Buffer.from(rootHex, 'hex'), leaf, JSON.parse(stepsJson));
   },
   decode: decodeLeaf,
   chainId: () => CHAIN_ID,
@@ -167,6 +171,11 @@ test('the corrected gateway replies are served and read through the guarded tran
     assert.deepStrictEqual(Object.keys(fin).sort(), ['certificate', 'chain_id', 'epoch', 'header_bytes', 'header_hash', 'height']);
     const proof = await r.eventProof(receipt.anchor.height, 0);
     assert.deepStrictEqual(Object.keys(proof).sort(), ['event_count', 'event_root', 'height', 'index', 'leaf', 'steps']);
+    const txProof = await r.transactionProof(receipt.anchor.tx);
+    assert.deepStrictEqual(Object.keys(txProof).sort(), ['height', 'index', 'leaf', 'steps', 'transaction_root', 'tx_id']);
+    assert.strictEqual(txProof.tx_id, receipt.anchor.tx);
+    assert.strictEqual(txProof.transaction_root, F.decodeHeader(Buffer.from(fin.header_bytes, 'hex')).transactionRoot.toString('hex'));
+    await assert.rejects(r.transactionProof(encode('QTX', crypto.randomBytes(32))), (e) => e.code === 'QSTAMP_TRANSPORT' && e.reason === 'http 404');
     const set = await r.validatorSet(chain.epoch);
     assert.deepStrictEqual(Object.keys(set).sort(), ['chain_id', 'epoch', 'members', 'total_stake']);
     assert.deepStrictEqual(F.rosterFromValidatorSet(set, chain.epoch, chain.chainId), chain.roster.map((m) => ({ id: m.id, stake: m.stake, attest_pk: m.attest_pk })));
@@ -196,9 +205,18 @@ test('a validator set is accepted only for the asked epoch and chain with a cons
   }
 });
 
-test('the event proofs of the fake gateway verify with the published client core helpers', () => {
+test('the event and transaction proofs of the fake gateway verify with the published client core helpers', async () => {
   const helpers = F.helpersFrom(qcore);
-  assert.ok(helpers.finality && helpers.event && helpers.decode, 'the client core provides the proof helpers');
+  assert.ok(F.helpersComplete(helpers), 'the client core provides the proof helpers');
+  const stampChain = makeChain();
+  const receipt = await stamped(stampChain, Buffer.from('a transaction for the client core'));
+  const t = stampChain.transactionProofAt(receipt.anchor.tx);
+  assert.strictEqual(helpers.transaction(t.transaction_root, t.tx_id, t.leaf, JSON.stringify(t.steps)), true);
+  assert.strictEqual(helpers.transaction(t.transaction_root, encode('QTX', crypto.randomBytes(32)), t.leaf, JSON.stringify(t.steps)), false);
+  assert.strictEqual(helpers.transaction('11'.repeat(32), t.tx_id, t.leaf, JSON.stringify(t.steps)), false);
+  const decoded = F.decodeTransaction(Buffer.from(t.leaf, 'hex'));
+  assert.strictEqual(decoded.args.toString('hex'), stampChain.txs.get(receipt.anchor.tx).raw);
+  assert.strictEqual(decoded.chainId, CHAIN_ID);
   const chain = makeChain();
   const contract = chain.contract;
   for (let i = 0; i < 5; i += 1) chain.events.get(chain.height).push({ contract, selector: wire.STAMPED_SELECTOR, data: String(i).padStart(2, '0').repeat(72) });
@@ -340,22 +358,151 @@ test('pinned rosters without a pinned epoch length never let an endpoint choose 
   assert.match(r.checks.find((c) => c.name === 'proof').detail, /not the epoch length/);
 });
 
-test('a proven anchor binds the block named in the receipt and needs its transaction confirmed', async () => {
+test('a proven anchor binds the block and the transaction named in the receipt', async () => {
   const chain = makeChain();
   chain.certify = certificate([1, 2, 3]);
   const record = Buffer.from('a bound block');
   const receipt = await stamped(chain, record);
+  const elsewhere = await stamped(chain, Buffer.from('another record'));
   const opts = { bytes: record, clients: only(chain), trustCustomEndpoints: true };
+  const proven = await verifyWith(pinned, receipt, opts, { helpers: stubHelpers });
+  assert.strictEqual(proven.status, 'valid');
+  assert.match(proven.checks.find((c) => c.name === 'finality').detail, /the anchoring transaction is included under it/);
   const otherBlock = JSON.parse(JSON.stringify(receipt));
   otherBlock.anchor.block = chain.blocks.get(receipt.anchor.height - 1).block;
   const moved = await verifyWith(pinned, otherBlock, opts, { helpers: stubHelpers });
   assert.strictEqual(moved.status, 'invalid');
   const otherTx = JSON.parse(JSON.stringify(receipt));
-  otherTx.anchor.tx = encode('QTX', crypto.randomBytes(32));
-  const unknown = await verifyWith(pinned, otherTx, opts, { helpers: stubHelpers });
+  otherTx.anchor.tx = elsewhere.anchor.tx;
+  const swapped = await verifyWith(pinned, otherTx, opts, { helpers: stubHelpers });
+  assert.strictEqual(swapped.status, 'indeterminate');
+  assert.strictEqual(qstamp.isProven(swapped), false);
+  assert.match(swapped.trustDetail, /does not prove the transaction of the receipt under the certified block \(the proof is for another block\)/);
+  const randomTx = JSON.parse(JSON.stringify(receipt));
+  randomTx.anchor.tx = encode('QTX', crypto.randomBytes(32));
+  const unknown = await verifyWith(pinned, randomTx, opts, { helpers: stubHelpers });
   assert.strictEqual(unknown.status, 'indeterminate');
   assert.strictEqual(qstamp.isProven(unknown), false);
-  assert.match(unknown.trustDetail, /the transaction id in the receipt is not covered by the proof until the gateway serves a transaction inclusion proof/);
+  assert.match(unknown.trustDetail, /could not serve a transaction inclusion proof .* so the transaction id in the receipt is not covered by the proof/);
+});
+
+test('a proven transaction keeps a receipt valid whatever other endpoints say about it', async () => {
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const record = Buffer.from('a transaction proven by inclusion');
+  const receipt = await stamped(chain, record);
+  const deny = (tx) => ({ transaction: (c, id) => Object.assign({}, c.txs.get(id), tx) });
+  const cases = [
+    only(chain, { transaction: () => ({ status: 'unknown' }) }),
+    only(chain, deny({ from: qcore.core.address(new Uint8Array(32).fill(0x55), 0) })),
+    [client(chain, 'https://denier.example', deny({ raw: '00' }))].concat(only(chain, { transaction: () => ({ status: 'unknown' }) })),
+    [client(chain, 'https://lagging.example', { nodeInfo: (c) => ({ chain_id: c.chainId, genesis_hash: c.genesis, head_height: receipt.anchor.height - 1 }) })].concat(only(chain)),
+  ];
+  for (const clients of cases) {
+    const r = await verifyWith(pinned, receipt, { bytes: record, clients, trustCustomEndpoints: true }, { helpers: stubHelpers });
+    assert.strictEqual(r.status, 'valid', JSON.stringify(r.checks));
+    assert.strictEqual(r.trust, 'finality-proof');
+    assert.strictEqual(qstamp.isProven(r), true);
+    assert.ok(r.checks.every((c) => c.ok));
+    assert.ok(r.notices.some((n) => /^(transaction|chain)/.test(n)), JSON.stringify(r.notices));
+  }
+});
+
+test('without transaction proofs from the gateway the transaction must be confirmed by an endpoint', async () => {
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const record = Buffer.from('an older gateway');
+  const receipt = await stamped(chain, record);
+  const older = (extra) => only(chain, Object.assign({ noTransactionProofs: true }, extra || {}));
+  const confirmed = await verifyWith(pinned, receipt, { bytes: record, clients: older(), trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.strictEqual(confirmed.status, 'valid');
+  assert.ok(confirmed.checks.some((c) => c.ok && c.name === 'transaction'));
+  const unconfirmed = await verifyWith(pinned, receipt, { bytes: record, clients: older({ transaction: () => { throw new Error('the endpoint is unreachable'); } }), trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.strictEqual(unconfirmed.status, 'indeterminate');
+  assert.strictEqual(qstamp.isProven(unconfirmed), false);
+  assert.match(unconfirmed.trustDetail, /does not serve transaction inclusion proofs, so the transaction id in the receipt is not covered by the proof, and no endpoint confirmed the transaction/);
+  for (const transaction of [(c, id) => Object.assign({}, c.txs.get(id), { raw: '00' }), () => ({ status: 'unknown' })]) {
+    const disputed = await verifyWith(pinned, receipt, { bytes: record, clients: older({ transaction }), trustCustomEndpoints: true }, { helpers: stubHelpers });
+    assert.strictEqual(disputed.status, 'indeterminate');
+    assert.strictEqual(qstamp.isProven(disputed), false);
+    assert.match(disputed.trustDetail, /an endpoint reported that the transaction does not match/);
+  }
+});
+
+test('a transaction proof for another transaction, another root or a broken path never proves a receipt and never refutes it', async () => {
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const record = Buffer.from('a swapped transaction');
+  const receipt = await stamped(chain, record);
+  const h = receipt.anchor.height;
+  const at = (c) => c.transactionProofAt(receipt.anchor.tx);
+  const forged = (change) => ({ transactionProof: (c) => change(at(c), c) });
+  const sibling = (c, args, extra) => {
+    const leaf = wrapperBytes(Object.assign({ from: receipt.anchor.sender, to: receipt.contract, args, nonce: 999, chainId: c.numericChainId }, extra || {}));
+    return { leaf, id: encode('QTX', sha3(leaf)) };
+  };
+  const pair = (c, leafB) => {
+    const leaves = [Buffer.from(at(c).leaf, 'hex'), leafB].map((l) => sha3(Buffer.from([0]), l));
+    return { root: merkleRoot(leaves).toString('hex'), steps: merkleSteps(leaves, 0) };
+  };
+  const variants = [
+    [forged((p) => Object.assign(p, { tx_id: encode('QTX', crypto.randomBytes(32)) })), /the proof is for another transaction/],
+    [forged((p) => Object.assign(p, { height: h + 1 })), /the proof is for another block/],
+    [forged((p) => Object.assign(p, { transaction_root: '11'.repeat(32) })), /transaction root other than the certified one/],
+    [forged((p, c) => Object.assign(p, { transaction_root: pair(c, Buffer.from('x')).root, steps: pair(c, Buffer.from('x')).steps })), /transaction root other than the certified one/],
+    [forged((p, c) => Object.assign(p, { steps: pair(c, Buffer.from('x')).steps })), /its path or leaf does not lead to the certified transaction root/],
+    [forged((p) => Object.assign(p, { steps: [{ sibling: '22'.repeat(32), left: true }] })), /its path or leaf does not lead/],
+    [forged((p, c) => Object.assign(p, { leaf: sibling(c, Buffer.from(wire.stampArgs(crypto.randomBytes(32), '2'), 'hex')).leaf.toString('hex') })), /its path or leaf does not lead/],
+    [forged((p) => Object.assign(p, { leaf: undefined })), /the transaction leaf is not hex/],
+    [forged((p) => Object.assign(p, { steps: [{ sibling: '22'.repeat(32), sibling_on_left: true }] })), /does not say which side/],
+    [forged(() => []), /no proof was returned/],
+  ];
+  for (const [override, pattern] of variants) {
+    const r = await verifyWith(pinned, receipt, { bytes: record, clients: only(chain, override), trustCustomEndpoints: true }, { helpers: stubHelpers });
+    assert.strictEqual(r.status, 'indeterminate', String(pattern));
+    assert.strictEqual(qstamp.isProven(r), false);
+    assert.match(r.trustDetail, pattern);
+  }
+  const liar = only(chain, variants[2][0]);
+  liar[0].base = 'https://liar.example';
+  for (const clients of [liar.concat(only(chain)), only(chain).concat(liar)]) {
+    const r = await verifyWith(pinned, receipt, { bytes: record, clients, trustCustomEndpoints: true }, { helpers: stubHelpers });
+    assert.strictEqual(r.status, 'valid');
+  }
+});
+
+test('an included transaction that differs from the receipt refutes it', async () => {
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const record = Buffer.from('an included but different transaction');
+  const receipt = await stamped(chain, record);
+  const h = receipt.anchor.height;
+  const original = chain.txLeaves.get(h)[0];
+  const net = qstamp.NETWORKS.testnet;
+  const anchored = qstamp.commitment(Buffer.from(receipt.root, 'hex'), receipt.proof.size, { genesis: net.genesis, contract: net.contract, sender: receipt.anchor.sender, kind: receipt.kind });
+  const args = Buffer.from(wire.stampArgs(anchored, receipt.kind), 'hex');
+  const cases = [
+    [{ from: qcore.core.address(new Uint8Array(32).fill(0x44), 0) }, /it was signed by another account/],
+    [{ to: encode('Q', sha3('another contract')) }, /it calls another contract/],
+    [{ args: Buffer.from(wire.stampArgs(crypto.randomBytes(32), receipt.kind), 'hex') }, /it does not carry this commitment/],
+    [{ kind: 0 }, /it is not a contract call/],
+    [{ chainId: chain.numericChainId + 1n }, /it was signed for another chain/],
+  ];
+  for (const [change, pattern] of cases) {
+    const leaf = wrapperBytes(Object.assign({ from: receipt.anchor.sender, to: receipt.contract, args, nonce: 1, chainId: chain.numericChainId }, change));
+    chain.txLeaves.get(h)[0] = leaf;
+    const forged = JSON.parse(JSON.stringify(receipt));
+    forged.anchor.tx = encode('QTX', sha3(leaf));
+    chain.txAt.set(forged.anchor.tx, { height: h, index: 0 });
+    forged.anchor.block = chain.blocks.get(h).block;
+    const r = await verifyWith(pinned, forged, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: stubHelpers });
+    assert.strictEqual(r.status, 'invalid', String(pattern));
+    assert.match(r.checks.find((c) => c.name === 'finality').detail, pattern);
+    assert.match(r.checks.find((c) => c.name === 'finality').detail, /is included under the certified block but/);
+  }
+  chain.txLeaves.get(h)[0] = original;
+  const restored = await verifyWith(pinned, receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.strictEqual(restored.status, 'valid');
 });
 
 test('two verified certificates for different blocks at the anchor height refute the anchor in either order', async () => {
@@ -402,7 +549,14 @@ test('a client core without the proof helpers leaves the anchor unproven', async
   const current = F.helpersFrom(qcore);
   const r = await verifyWith(pinned, receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: current.finality ? {} : current });
   assert.strictEqual(r.status, 'unproven');
-  assert.match(r.checks.find((c) => c.name === 'proof').detail, /cannot check finality certificates/);
+  assert.match(r.checks.find((c) => c.name === 'proof').detail, /cannot check finality certificates and transaction inclusion proofs/);
+  for (const missing of Object.keys(F.HELPER_NAMES)) {
+    const partial = Object.assign({}, stubHelpers);
+    delete partial[missing];
+    const without = await verifyWith(pinned, receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: partial });
+    assert.strictEqual(without.status, 'unproven', missing);
+    assert.strictEqual(qstamp.isProven(without), false, missing);
+  }
 });
 
 test('a certified block whose time differs from the receipt makes the receipt invalid', async () => {
@@ -450,14 +604,16 @@ test('no finality request is made while no roster is pinned', async () => {
 
 test('the proof helpers are detected on the client core under their published names', () => {
   const f = () => true;
-  const found = F.helpersFrom({ core: { verifyFinality: f, verifyEvent: f, decodeEvent: f, chainIdFromName: f } });
-  assert.ok(found.finality && found.event && found.decode && found.chainId);
-  const snake = F.helpersFrom({ verify_finality: f, verify_event: f, decode_event: f });
-  assert.ok(snake.finality && snake.event && snake.decode);
+  const found = F.helpersFrom({ core: { verifyFinality: f, verifyEvent: f, decodeEvent: f, verifyTransaction: f, chainIdFromName: f } });
+  assert.ok(F.helpersComplete(found));
+  const snake = F.helpersFrom({ verify_finality: f, verify_event: f, decode_event: f, verify_transaction: f, chain_id_from_name: f });
+  assert.ok(F.helpersComplete(snake));
+  assert.strictEqual(F.helpersComplete(F.helpersFrom({ core: { verifyFinality: f, verifyEvent: f, decodeEvent: f, chainIdFromName: f } })), false);
   const today = F.helpersFrom(qcore);
-  assert.ok(today.chainId && today.finality && today.event && today.decode);
+  assert.ok(F.helpersComplete(today));
+  assert.strictEqual(require('@quantovainc/qcore/package.json').version, '0.5.8');
   assert.strictEqual(require('@quantovainc/qcore/package.json').version, require('../package.json').dependencies['@quantovainc/qcore']);
-  for (const name of ['verifyFinality', 'verifyEvent', 'decodeEvent', 'chainIdFromName']) assert.strictEqual(typeof qcore.core[name], 'function', name);
+  for (const name of ['verifyFinality', 'verifyEvent', 'decodeEvent', 'verifyTransaction', 'chainIdFromName']) assert.strictEqual(typeof qcore.core[name], 'function', name);
 });
 
 test('proof steps decode from the gateway form and reject a wrong root', () => {

@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const { core } = require('@quantovainc/qcore');
 const wire = require('../lib/wire');
 const { eventLeaf } = require('../lib/finality');
+const { decode } = require('../lib/bech32m');
 const { NETWORKS, deepFreeze } = require('../lib/networks');
 
 const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
@@ -80,10 +81,32 @@ function u64le(n) {
   return b;
 }
 
-function headerBytes(height, time, eventRoot) {
+function lengthPrefixed(bytes) {
+  return Buffer.concat([u64le(bytes.length), bytes]);
+}
+
+function addressPayload(address) {
+  try {
+    return decode(address, 'Q', 32);
+  } catch (e) {
+    return Buffer.from(String(address), 'utf8');
+  }
+}
+
+function wrapperBytes(o) {
+  const fee = Buffer.alloc(16);
+  fee.writeBigUInt64LE(BigInt(o.fee === undefined ? 2000 : o.fee));
+  return Buffer.concat([
+    lengthPrefixed(addressPayload(o.from)), u64le(o.nonce || 0), u64le(200000), fee,
+    lengthPrefixed(addressPayload(o.to)), lengthPrefixed(o.args), u64le(0), u64le(o.chainId), lengthPrefixed(Buffer.alloc(0)),
+    u64le(o.validUntil || 0), Buffer.from([o.kind === undefined ? 1 : o.kind, 1]), lengthPrefixed(sha3(Buffer.from('signature'), o.args, u64le(o.nonce || 0))),
+  ]);
+}
+
+function headerBytes(height, time, eventRoot, transactionRoot) {
   const proposer = Buffer.from('validator-1');
   return Buffer.concat([
-    u64le(height), Buffer.alloc(32, 1), Buffer.alloc(32, 2), Buffer.alloc(32, 3), eventRoot, Buffer.alloc(32, 4),
+    u64le(height), Buffer.alloc(32, 1), Buffer.alloc(32, 2), transactionRoot || Buffer.alloc(32, 3), eventRoot, Buffer.alloc(32, 4),
     u64le(proposer.length), proposer, u64le(time), u64le(0),
   ]);
 }
@@ -104,7 +127,11 @@ function makeChain(opts) {
     contract: net.contract,
     time: o.time || now - 600,
     height: o.height || Math.floor(((o.time || now - 600) - net.genesisTime) * 4),
+    numericChainId: BigInt(core.chainIdFromName(net.chainId)),
     txs: new Map(),
+    txLeaves: new Map(),
+    txAt: new Map(),
+    submitted: 0,
     events: new Map(),
     blocks: new Map(),
     storage: new Map(),
@@ -119,10 +146,11 @@ function makeChain(opts) {
     const entry = { height: h, time: chain.time };
     Object.defineProperty(entry, 'block', {
       enumerable: true,
-      get: () => encode('QBK', sha3(headerBytes(h, entry.time, merkleRoot(chain.leavesAt(h).map((l) => sha3(Buffer.from([0]), l)))))),
+      get: () => encode('QBK', sha3(chain.headerAt(h, entry.time))),
     });
     chain.blocks.set(h, entry);
     chain.events.set(chain.height, []);
+    chain.txLeaves.set(chain.height, []);
     return chain.blocks.get(chain.height);
   }
   newBlock(chain.time);
@@ -131,7 +159,11 @@ function makeChain(opts) {
     const raw = Buffer.from(argsHex, 'hex');
     const sel = raw.subarray(0, 4).toString('hex');
     const blk = newBlock();
-    const txId = encode('QTX', crypto.randomBytes(32));
+    chain.submitted += 1;
+    const leaf = wrapperBytes({ from, to, args: raw, nonce: chain.submitted, chainId: chain.numericChainId, validUntil: blk.height + 64 });
+    const txId = encode('QTX', sha3(leaf));
+    chain.txAt.set(txId, { height: blk.height, index: chain.txLeaves.get(blk.height).length });
+    chain.txLeaves.get(blk.height).push(leaf);
     let ok = true;
     let eventSel;
     let data;
@@ -159,11 +191,25 @@ function makeChain(opts) {
     return txId;
   };
   chain.leavesAt = (h) => (chain.events.get(h) || []).map((e) => eventLeaf(e.contract, e.selector, e.data));
+  chain.transactionRootAt = (h) => merkleRoot((chain.txLeaves.get(h) || []).map((l) => sha3(Buffer.from([0]), l)));
+  chain.headerAt = (h, time) => headerBytes(h, time, merkleRoot(chain.leavesAt(h).map((l) => sha3(Buffer.from([0]), l))), chain.transactionRootAt(h));
+  chain.transactionProofAt = (id) => {
+    const at = chain.txAt.get(id);
+    if (!at) return null;
+    const leaves = chain.txLeaves.get(at.height).map((l) => sha3(Buffer.from([0]), l));
+    return {
+      tx_id: id,
+      height: at.height,
+      index: at.index,
+      transaction_root: merkleRoot(leaves).toString('hex'),
+      leaf: chain.txLeaves.get(at.height)[at.index].toString('hex'),
+      steps: merkleSteps(leaves, at.index),
+    };
+  };
   chain.finalityAt = (h) => {
     const b = chain.blocks.get(h);
     if (!b) return null;
-    const leaves = chain.leavesAt(h).map((l) => sha3(Buffer.from([0]), l));
-    const bytes = headerBytes(h, b.time, merkleRoot(leaves));
+    const bytes = chain.headerAt(h, b.time);
     const hash = sha3(bytes).toString('hex');
     return {
       height: h,
@@ -226,6 +272,11 @@ function api(chain, ov) {
     }),
     finality: async (h) => (o.finality ? o.finality(chain, h) : chain.finalityAt(Number(h))),
     eventProof: async (h, i) => (o.eventProof ? o.eventProof(chain, h, i) : chain.eventProofAt(Number(h), Number(i))),
+    transactionProof: async (id) => {
+      const proof = o.transactionProof ? o.transactionProof(chain, id) : chain.transactionProofAt(id);
+      if (proof === null) throw new Error('no finalized transaction ' + id);
+      return proof;
+    },
     validatorSet: async (e) => (o.validatorSet ? o.validatorSet(chain, e) : chain.validatorSetAt(Number(e))),
   };
 }
@@ -240,6 +291,7 @@ function client(chain, base, overrides) {
     delete c.eventProof;
     delete c.validatorSet;
   }
+  if (!o.proofs || o.noTransactionProofs) delete c.transactionProof;
   c.call = async (seed, index, to, argsHex) => {
     if (o.call) return o.call(chain, seed, index, to, argsHex);
     const from = core.address(seed, index);
@@ -282,6 +334,13 @@ function gateway(chain, overrides) {
         if (method === 'get_storage_at') return send(200, await handlers.storageAt(body.address, body.keys));
         if (method === 'get_finality' && o.proofs) return send(200, await handlers.finality(body.height));
         if (method === 'get_event_proof' && o.proofs) return send(200, await handlers.eventProof(body.height, body.index));
+        if (method === 'get_transaction_proof' && o.proofs && !o.noTransactionProofs) {
+          try {
+            return send(200, await handlers.transactionProof(body.tx_id));
+          } catch (e) {
+            return send(404, { message: 'no finalized transaction' });
+          }
+        }
         if (method === 'get_validator_set' && o.proofs) {
           const set = await handlers.validatorSet(body.epoch);
           return set ? send(200, set) : send(404, { message: 'only the roster of the current epoch is served' });
@@ -305,4 +364,4 @@ function gateway(chain, overrides) {
 
 const SEED = new Uint8Array(32).fill(7);
 
-module.exports = { makeChain, client, gateway, encode, SEED, testNetwork, merkleRoot, merkleSteps, headerBytes, sha3 };
+module.exports = { makeChain, client, gateway, encode, SEED, testNetwork, merkleRoot, merkleSteps, headerBytes, wrapperBytes, sha3 };

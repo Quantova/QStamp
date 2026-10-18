@@ -11,6 +11,7 @@ const qstamp = require('..');
 const wire = require('../lib/wire');
 const F = require('../lib/finality');
 const { verifyWith } = require('../lib/verify');
+const { decode } = require('../lib/bech32m');
 const { testNetwork, encode, sha3 } = require('./chain');
 const V = require('./vectors/finality.json');
 
@@ -47,6 +48,13 @@ function serve(s, over) {
     get_event_proof: (b) => (b.height === V.height && b.index === block.index ? {
       height: V.height, index: block.index, event_count: block.event_count, event_root: block.event_root, leaf: block.leaf, steps: block.steps,
     } : null),
+    get_transaction_proof: (b) => {
+      if (o.transactionProof !== undefined) return typeof o.transactionProof === 'function' ? o.transactionProof(b) : o.transactionProof;
+      if (o.noTransactionProofs) return null;
+      const known = [block.transaction].concat((s.other_transactions || []).map((t) => Object.assign({ transaction_root: block.transaction.transaction_root }, t)));
+      const t = known.find((k) => k.tx_id === b.tx_id);
+      return t ? { tx_id: t.tx_id, height: V.height, index: t.index, transaction_root: t.transaction_root, leaf: t.leaf, steps: t.steps } : null;
+    },
     get_storage_at: () => ({ slots: [] }),
   };
   const server = http.createServer((req, res) => {
@@ -83,6 +91,16 @@ async function check(s, endpoints, extra) {
   } finally {
     await Promise.all(gws.map((g) => g.close()));
   }
+}
+
+function withTx(s, tx) {
+  const receipt = JSON.parse(JSON.stringify(s.receipt));
+  receipt.anchor.tx = tx;
+  return Object.assign({}, s, { receipt });
+}
+
+function proofOf(t, root) {
+  return { tx_id: t.tx_id, height: V.height, index: t.index, transaction_root: root || t.transaction_root, leaf: t.leaf, steps: t.steps };
 }
 
 function headerFields(bytes) {
@@ -161,6 +179,9 @@ test('the vectors pin the testnet chain and well formed rosters', () => {
   assert.strictEqual(V.chain.contract, qstamp.NETWORKS.testnet.contract);
   assert.strictEqual(String(helpers.chainId(V.chain.name)), V.chain.id);
   assert.strictEqual(V.epoch, Math.floor(V.height / V.epoch_blocks));
+  assert.deepStrictEqual(V.source['Quantova-Chain'], 'b2491a594a9cfe075d71a0ad85b996099eb5d7cc');
+  assert.deepStrictEqual(V.source['QRC-CONSENSUS'], 'c3e731c8e7b371cddd9795b8a8f5261f4a46762b');
+  assert.deepStrictEqual(V.source['Q-Crypto'], 'e47d6cd94e71c13b22e2990f8c2b0a2e3a2204d0');
   assert.deepStrictEqual(Object.keys(V.rosters).sort(), ['four', 'three']);
   assert.strictEqual(V.rosters.four.length, 4);
   assert.strictEqual(V.rosters.three.length, 3);
@@ -175,8 +196,14 @@ test('the vectors pin the testnet chain and well formed rosters', () => {
     assert.strictEqual(s.receipt.anchor.height, V.height);
     assert.strictEqual(s.receipt.anchor.time, V.time);
     assert.strictEqual(s.receipt.anchor.block, encode('QBK', Buffer.from(s.blocks[0].header_hash, 'hex')));
-    for (const b of s.blocks) assert.strictEqual(sha3(Buffer.from(b.header_bytes, 'hex')).toString('hex'), b.header_hash);
+    for (const b of s.blocks) {
+      assert.strictEqual(sha3(Buffer.from(b.header_bytes, 'hex')).toString('hex'), b.header_hash);
+      assert.strictEqual(b.transaction.tx_id, s.receipt.anchor.tx);
+      assert.strictEqual(b.transaction.transaction_root, F.decodeHeader(Buffer.from(b.header_bytes, 'hex')).transactionRoot.toString('hex'));
+      assert.strictEqual(encode('QTX', sha3(Buffer.from(b.transaction.leaf, 'hex'))), b.transaction.tx_id);
+    }
   }
+  assert.deepStrictEqual(S.a_all_sign.other_transactions.map((t) => t.role), ['neighbour', 'neighbour', 'other target', 'other sender', 'other call', 'neighbour']);
 });
 
 test('the vectors verify directly with the client core helpers', () => {
@@ -188,6 +215,7 @@ test('the vectors verify directly with the client core helpers', () => {
     h_broken_inclusion: ['8000', '8000'],
     i_other_contract: ['8000', '8000'],
     i_other_selector: ['8000', '8000'],
+    j_broken_transaction_path: ['8000', '8000'],
   };
   const refused = {
     d_below_two_thirds: /less than two thirds of the stake/,
@@ -205,6 +233,7 @@ test('the vectors verify directly with the client core helpers', () => {
         assert.strictEqual(String(f.hash).toLowerCase(), b.header_hash, name);
         assert.strictEqual(String(f.height), String(V.height), name);
         assert.strictEqual(String(f.event_root).toLowerCase(), b.event_root, name);
+        assert.strictEqual(String(f.transaction_root).toLowerCase(), b.transaction.transaction_root, name);
         assert.strictEqual(String(f.time), String(header.time), name);
       } else {
         assert.throws(() => helpers.finality(BigInt(V.chain.id), b.header_bytes, b.certificate, JSON.stringify(V.rosters[s.roster])), refused[name], name);
@@ -212,6 +241,14 @@ test('the vectors verify directly with the client core helpers', () => {
       assert.strictEqual(b.event_root, header.eventRoot.toString('hex'), name);
       assert.strictEqual(b.steps.length, F.pathLength(b.event_count, b.index), name);
       assert.strictEqual(helpers.event(b.event_root, b.leaf, JSON.stringify(b.steps)), name !== 'h_broken_inclusion', name);
+      const t = b.transaction;
+      assert.strictEqual(helpers.transaction(t.transaction_root, t.tx_id, t.leaf, JSON.stringify(t.steps)), name !== 'j_broken_transaction_path', name);
+      const tx = F.decodeTransaction(Buffer.from(t.leaf, 'hex'));
+      assert.ok(tx.sender.equals(decode(s.receipt.anchor.sender, 'Q', 32)), name);
+      assert.ok(tx.target.equals(decode(V.chain.contract, 'Q', 32)), name);
+      assert.strictEqual(tx.args.toString('hex'), s.transaction.raw, name);
+      assert.strictEqual(tx.chainId, BigInt(V.chain.id), name);
+      assert.strictEqual(tx.kind, 1, name);
       const event = JSON.parse(helpers.decode(b.leaf));
       const listed = s.events[b.index];
       assert.deepStrictEqual([event.contract, String(event.selector).toLowerCase(), String(event.data).toLowerCase()], [listed.contract, listed.selector, listed.data], name);
@@ -223,6 +260,17 @@ test('the vectors verify directly with the client core helpers', () => {
   assert.strictEqual(helpers.event(S.a_all_sign.blocks[0].event_root, S.a_all_sign.blocks[0].leaf, JSON.stringify(S.a_all_sign.blocks[0].steps.map((st) => Object.assign({}, st, { left: !st.left })))), false);
   assert.strictEqual(JSON.parse(helpers.decode(S.i_other_contract.blocks[0].leaf)).contract === V.chain.contract, false);
   assert.strictEqual(String(JSON.parse(helpers.decode(S.i_other_selector.blocks[0].leaf)).selector).toLowerCase(), wire.COMMITMENT_STAMPED_SELECTOR);
+  const a = S.a_all_sign;
+  const root = a.blocks[0].transaction.transaction_root;
+  for (const t of a.other_transactions) {
+    assert.strictEqual(helpers.transaction(root, t.tx_id, t.leaf, JSON.stringify(t.steps)), true, t.role);
+    assert.strictEqual(helpers.transaction(root, a.receipt.anchor.tx, t.leaf, JSON.stringify(t.steps)), false, t.role);
+  }
+  const elsewhere = a.transaction_elsewhere;
+  assert.strictEqual(elsewhere.tx_id, a.receipt.anchor.tx);
+  assert.notStrictEqual(elsewhere.transaction_root, root);
+  assert.strictEqual(helpers.transaction(elsewhere.transaction_root, elsewhere.tx_id, elsewhere.leaf, JSON.stringify(elsewhere.steps)), true);
+  assert.strictEqual(helpers.transaction(root, elsewhere.tx_id, elsewhere.leaf, JSON.stringify(elsewhere.steps)), false);
 });
 
 test('certificates from all, three of four and exactly two thirds of the stake prove a receipt confirmed by an endpoint', async () => {
@@ -238,11 +286,99 @@ test('certificates from all, three of four and exactly two thirds of the stake p
     assert.strictEqual(qstamp.isProven(r), true, name);
     assert.strictEqual(r.officialEndpoints, false, name);
     assert.match(r.checks.find((c) => c.name === 'finality').detail, pattern, name);
+    assert.match(r.checks.find((c) => c.name === 'finality').detail, /the anchoring transaction is included under it/, name);
     assert.ok(r.checks.some((c) => c.ok && /^transaction/.test(c.name)), name);
   }
-  const unconfirmed = await check(S.a_all_sign, [{ transaction: () => ({ status: 'unknown' }) }, { transaction: () => ({ status: 'unknown' }) }]);
+});
+
+test('a proven transaction keeps a vector receipt valid when endpoints dispute or cannot confirm it', async () => {
+  const s = S.a_all_sign;
+  const other = encode('Q', sha3('a different signer'));
+  const cases = [
+    [{ transaction: () => ({ status: 'unknown' }) }, { transaction: () => ({ status: 'unknown' }) }],
+    [{ transaction: () => Object.assign({}, s.transaction, { from: other }) }, { transaction: () => Object.assign({}, s.transaction, { raw: '00' }) }],
+    [{ transaction: () => null }, { transaction: () => null }],
+    [{ transaction: () => null }],
+  ];
+  for (const endpoints of cases) {
+    const r = await check(s, endpoints);
+    assert.strictEqual(r.status, 'valid', JSON.stringify(r.checks));
+    assert.strictEqual(r.trust, 'finality-proof');
+    assert.strictEqual(qstamp.isProven(r), true);
+    assert.ok(r.checks.every((c) => c.ok));
+    assert.ok(r.notices.some((n) => /^transaction/.test(n)), JSON.stringify(r.notices));
+  }
+});
+
+test('a wrong transaction id in a vector receipt is invalid', async () => {
+  const s = S.a_all_sign;
+  const expected = {
+    neighbour: [/it was signed by another account/, /it does not carry this commitment/],
+    'other target': [/it calls another contract/],
+    'other sender': [/it was signed by another account/],
+    'other call': [/it does not carry this commitment/],
+  };
+  const all = /signed by another account|calls another contract|not a contract call|another chain|does not carry this commitment/g;
+  for (const t of s.other_transactions) {
+    const r = await check(withTx(s, t.tx_id), [{}, {}]);
+    assert.strictEqual(r.status, 'invalid', t.role);
+    assert.strictEqual(qstamp.isProven(r), false, t.role);
+    const detail = r.checks.find((c) => c.name === 'finality').detail;
+    assert.match(detail, /is included under the certified block but/, t.role);
+    assert.strictEqual(detail.match(all).length, expected[t.role].length, t.role + ' ' + detail);
+    for (const pattern of expected[t.role]) assert.match(detail, pattern, t.role);
+  }
+  const honest = { transaction: () => ({ status: 'unknown' }) };
+  const unknown = await check(withTx(s, encode('QTX', sha3('a transaction that was never sent'))), [honest, honest]);
+  assert.strictEqual(unknown.status, 'indeterminate');
+  assert.strictEqual(qstamp.isProven(unknown), false);
+});
+
+test('a transaction proof for another transaction, a broken path or another root never proves a vector receipt and never refutes it', async () => {
+  const s = S.a_all_sign;
+  const t = s.blocks[0].transaction;
+  const root = t.transaction_root;
+  const decoy = s.other_transactions[3];
+  const variants = [
+    [{ transactionProof: proofOf(decoy, root) }, /the proof is for another transaction/],
+    [{ transactionProof: Object.assign(proofOf(decoy, root), { tx_id: t.tx_id }) }, /its path or leaf does not lead to the certified transaction root/],
+    [{ transactionProof: Object.assign(proofOf(t), { leaf: decoy.leaf }) }, /its path or leaf does not lead/],
+    [{ transactionProof: proofOf(s.transaction_elsewhere) }, /transaction root other than the certified one/],
+    [{ transactionProof: proofOf(s.transaction_elsewhere, root) }, /its path or leaf does not lead/],
+    [{ transactionProof: Object.assign(proofOf(t), { steps: t.steps.map((st) => Object.assign({}, st, { left: !st.left })) }) }, /its path or leaf does not lead/],
+    [{ transactionProof: Object.assign(proofOf(t), { steps: t.steps.slice(1) }) }, /its path or leaf does not lead/],
+    [{ transactionProof: Object.assign(proofOf(t), { height: V.height + 1 }) }, /the proof is for another block/],
+    [{ transactionProof: Object.assign(proofOf(t), { leaf: flipped(t.leaf, 100) }) }, /its path or leaf does not lead/],
+  ];
+  for (const [over, pattern] of variants) {
+    const r = await check(s, [over, over]);
+    assert.strictEqual(r.status, 'indeterminate', String(pattern));
+    assert.strictEqual(qstamp.isProven(r), false, String(pattern));
+    assert.match(r.trustDetail, pattern);
+  }
+  const broken = await check(S.j_broken_transaction_path, [{}, {}]);
+  assert.strictEqual(broken.status, 'indeterminate');
+  assert.strictEqual(qstamp.isProven(broken), false);
+  assert.match(broken.trustDetail, /its path or leaf does not lead/);
+  for (const order of [[variants[0][0], {}], [{}, variants[0][0]]]) {
+    const r = await check(s, order);
+    assert.strictEqual(r.status, 'valid');
+    assert.strictEqual(qstamp.isProven(r), true);
+  }
+});
+
+test('a gateway without transaction proofs falls back to endpoints confirming the transaction', async () => {
+  const s = S.a_all_sign;
+  const older = { noTransactionProofs: true };
+  const confirmed = await check(s, [older, older]);
+  assert.strictEqual(confirmed.status, 'valid');
+  assert.strictEqual(qstamp.isProven(confirmed), true);
+  assert.doesNotMatch(confirmed.checks.find((c) => c.name === 'finality').detail, /the anchoring transaction is included/);
+  const unknown = Object.assign({ transaction: () => ({ status: 'unknown' }) }, older);
+  const unconfirmed = await check(s, [unknown, unknown]);
   assert.strictEqual(unconfirmed.status, 'indeterminate');
   assert.strictEqual(qstamp.isProven(unconfirmed), false);
+  assert.match(unconfirmed.trustDetail, /could not serve a transaction inclusion proof \(http 404\)/);
 });
 
 test('certificates below two thirds, from keys or ids outside the roster or for another chain id never prove a receipt', async () => {
