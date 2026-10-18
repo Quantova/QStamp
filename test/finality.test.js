@@ -12,6 +12,8 @@ const wire = require('../lib/wire');
 const { verifyWith } = require('../lib/verify');
 const F = require('../lib/finality');
 const { reader } = require('../lib/transport');
+const E = require('../lib/endpoints');
+const { checkNetwork } = require('../lib/networks');
 const { makeChain, client, gateway, SEED, testNetwork, encode, sha3, headerBytes, merkleRoot, merkleSteps } = require('./chain');
 
 const ML_DSA_65_PK_BYTES = 1952;
@@ -478,4 +480,74 @@ test('a header with trailing or oversized fields is refused', () => {
   assert.strictEqual(F.decodeHeader(good).height, 9);
   assert.throws(() => F.decodeHeader(Buffer.concat([good, Buffer.from([0])])), /trailing/);
   assert.throws(() => F.decodeHeader(good.subarray(0, 40)), /truncated/);
+});
+
+async function officialPair(t, chain, extra) {
+  const one = await gateway(chain, extra);
+  const two = await gateway(chain, Object.assign({ host: '::1' }, extra || {}));
+  t.after(() => Promise.all([one.close(), two.close()]));
+  return [{ url: one.url, operator: 'Operator One' }, { url: two.url, operator: 'Operator Two' }];
+}
+
+test('on a network that pins rosters an official quorum without a finality proof is never valid', async (t) => {
+  const chain = makeChain();
+  const record = Buffer.from('a defence build');
+  const receipt = await stamped(chain, record);
+  const rpcs = await officialPair(t, chain);
+  const strict = testNetwork({ rpcs, finality: { epochBlocks: 2 ** 40, rosters: { 0: ROSTER } } });
+  const r = await verifyWith(strict, receipt, { bytes: record, allowLoopback: true }, { helpers: stubHelpers });
+  assert.strictEqual(r.status, 'unproven');
+  assert.strictEqual(r.valid, false);
+  assert.strictEqual(r.trust, 'none');
+  assert.strictEqual(qstamp.isProven(r), false);
+  assert.match(r.checks.find((c) => c.name === 'proof').detail, /only through a finality proof/);
+  const asked = testNetwork({ rpcs, requireFinality: true });
+  const required = await verifyWith(asked, receipt, { bytes: record, allowLoopback: true }, { helpers: stubHelpers });
+  assert.strictEqual(required.status, 'unproven');
+  assert.strictEqual(qstamp.isProven(required), false);
+  const waived = testNetwork({ rpcs, requireFinality: false, finality: { epochBlocks: 2 ** 40, rosters: { 0: ROSTER } } });
+  const quorum = await verifyWith(waived, receipt, { bytes: record, allowLoopback: true }, { helpers: stubHelpers });
+  assert.strictEqual(quorum.status, 'valid');
+  assert.strictEqual(quorum.trust, 'official-quorum');
+});
+
+test('on a network that pins rosters a finality proof from its official endpoints is still valid', async (t) => {
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const record = Buffer.from('a proven defence build');
+  const receipt = await stamped(chain, record);
+  const rpcs = await officialPair(t, chain, { proofs: true });
+  const strict = testNetwork({ rpcs, finality: { epochBlocks: 2 ** 40, rosters: { 0: ROSTER } } });
+  const r = await verifyWith(strict, receipt, { bytes: record, allowLoopback: true }, { helpers: stubHelpers });
+  assert.strictEqual(r.status, 'valid');
+  assert.strictEqual(r.trust, 'finality-proof');
+  assert.strictEqual(qstamp.isProven(r), true);
+  chain.certify = certificate([1, 2, 3], () => OUTSIDER);
+  const bad = await verifyWith(strict, receipt, { bytes: record, allowLoopback: true }, { helpers: stubHelpers });
+  assert.strictEqual(bad.status, 'indeterminate');
+  assert.strictEqual(qstamp.isProven(bad), false);
+});
+
+test('plain http endpoints of a network are refused unless on loopback with allowLoopback or marked insecure', async () => {
+  const one = (entry) => testNetwork({ rpcs: [Object.assign({ operator: 'Operator One' }, entry)] });
+  assert.throws(() => checkNetwork(one({ url: 'http://203.0.113.5:8645' })), /plain http/);
+  assert.throws(() => checkNetwork(one({ url: 'http://node.sovereign.example:8645' }), { allowLoopback: true }), /plain http/);
+  assert.throws(() => checkNetwork(one({ url: 'http://127.0.0.1:8645' })), /allowLoopback/);
+  assert.strictEqual(checkNetwork(one({ url: 'http://127.0.0.1:8645' }), { allowLoopback: true }).rpcs.length, 1);
+  assert.strictEqual(checkNetwork(one({ url: 'http://203.0.113.5:8645', insecure: true })).rpcs.length, 1);
+  assert.throws(() => checkNetwork(one({ url: 'http://203.0.113.5:8645', insecure: 1 })), /left out or set to true/);
+  assert.throws(() => checkNetwork(one({ url: 'https://203.0.113.5', insecure: true })), /only to a network endpoint reached over plain http/);
+  assert.throws(() => checkNetwork(one({ url: 'http://203.0.113.5:8645', insecure: true, ca: 'x' })), /plain http/);
+  assert.throws(() => checkNetwork(one({ url: 'https://203.0.113.5', cacert: 'x' })), /only url, operator, ca, cert, key and insecure/);
+  assert.throws(() => checkNetwork(one({ url: 'https://203.0.113.5', cert: 'x' })), /together/);
+  assert.throws(() => checkNetwork(testNetwork({ requireFinality: 'yes' })), /either true or false/);
+  const plan = await E.endpointsFor({}, one({ url: 'http://203.0.113.5:8645' }), 'verify').catch((e) => e);
+  assert.match(plan.message, /plain http/);
+  const sovereign = one({ url: 'http://192.0.2.10:8645', insecure: true });
+  const entry = E.describe('http://192.0.2.10:8645', sovereign);
+  assert.strictEqual(entry.official, true);
+  assert.strictEqual(entry.tls.insecure, true);
+  await assert.rejects(reader('http://192.0.2.10:8645', () => false, entry.tls).nodeInfo(), (e) => e.reason === 'address refused');
+  await assert.rejects(reader('http://192.0.2.10:8645', () => false, null).nodeInfo(), (e) => e.reason === 'plaintext http refused');
+  assert.strictEqual(E.describe({ url: 'http://192.0.2.10:8645' }, testNetwork()).tls, null);
 });

@@ -165,10 +165,10 @@ test('official endpoints run by two different operators that agree make a receip
   const record = Buffer.from('a quarterly report');
   const receipt = await stamped(chain, record);
   const one = await gateway(chain);
-  const two = await gateway(chain);
+  const two = await gateway(chain, { host: '::1' });
   t.after(() => Promise.all([one.close(), two.close()]));
-  const official = testNetwork({ rpcs: [{ url: one.url, operator: 'Operator One' }, { url: 'http://localhost:' + two.port, operator: 'Operator Two' }] });
-  const r = await verifyWith(official, receipt, { bytes: record }, null);
+  const official = testNetwork({ rpcs: [{ url: one.url, operator: 'Operator One' }, { url: two.url, operator: 'Operator Two' }] });
+  const r = await verifyWith(official, receipt, { bytes: record, allowLoopback: true }, null);
   assert.strictEqual(r.status, 'valid');
   assert.strictEqual(r.trust, 'official-quorum');
   assert.strictEqual(r.officialEndpoints, true);
@@ -184,7 +184,7 @@ test('official endpoints of a single operator leave the receipt unproven', async
   const two = await gateway(chain);
   t.after(() => Promise.all([one.close(), two.close()]));
   const official = testNetwork({ rpcs: [{ url: one.url, operator: 'Operator One' }, { url: two.url, operator: 'Operator One' }] });
-  const r = await verifyWith(official, receipt, { bytes: record }, null);
+  const r = await verifyWith(official, receipt, { bytes: record, allowLoopback: true }, null);
   assert.strictEqual(r.status, 'unproven');
   assert.strictEqual(r.trust, 'single-endpoint');
   assert.strictEqual(r.officialEndpoints, true);
@@ -195,13 +195,13 @@ test('officialEndpoints is false as soon as one consulted endpoint is not offici
   const record = Buffer.from('a ledger close');
   const receipt = await stamped(chain, record);
   const one = await gateway(chain);
-  const two = await gateway(chain);
+  const two = await gateway(chain, { host: '::1' });
   t.after(() => Promise.all([one.close(), two.close()]));
-  const official = testNetwork({ rpcs: [{ url: one.url, operator: 'Operator One' }, { url: 'http://localhost:' + two.port, operator: 'Operator Two' }] });
-  const mixed = await verifyWith(official, receipt, { bytes: record, clients: [one.url, client(chain, 'https://third.example')], trustCustomEndpoints: true }, null);
+  const official = testNetwork({ rpcs: [{ url: one.url, operator: 'Operator One' }, { url: two.url, operator: 'Operator Two' }] });
+  const mixed = await verifyWith(official, receipt, { bytes: record, clients: [one.url, client(chain, 'https://third.example')], trustCustomEndpoints: true, allowLoopback: true }, null);
   assert.strictEqual(mixed.officialEndpoints, false);
   assert.strictEqual(mixed.status, 'unproven');
-  const both = await verifyWith(official, receipt, { bytes: record, rpc: [one.url, 'http://localhost:' + two.port] }, null);
+  const both = await verifyWith(official, receipt, { bytes: record, rpc: [one.url, two.url], allowLoopback: true }, null);
   assert.strictEqual(both.officialEndpoints, true);
   assert.strictEqual(both.status, 'valid');
 });
@@ -213,7 +213,7 @@ test('a single official endpoint gives an honest unproven result by default', as
   const one = await gateway(chain);
   t.after(() => one.close());
   const official = testNetwork({ rpcs: [{ url: one.url, operator: 'Operator One' }] });
-  const r = await verifyWith(official, receipt, { bytes: record }, null);
+  const r = await verifyWith(official, receipt, { bytes: record, allowLoopback: true }, null);
   assert.strictEqual(r.status, 'unproven');
   assert.strictEqual(r.trust, 'single-endpoint');
   assert.strictEqual(r.officialEndpoints, true);
@@ -227,7 +227,7 @@ test('remote error text never reaches the result', async (t) => {
   const bad = await gateway(chain, { status: 500, reply: { message: 'OPEN THIS LINK http://evil.example/now' } });
   t.after(() => bad.close());
   const official = testNetwork({ rpcs: [{ url: bad.url, operator: 'Operator One' }] });
-  const r = await verifyWith(official, receipt, { bytes: record }, null);
+  const r = await verifyWith(official, receipt, { bytes: record, allowLoopback: true }, null);
   assert.strictEqual(r.status, 'indeterminate');
   const text = JSON.stringify(r);
   assert.ok(!text.includes('OPEN THIS LINK'));
@@ -267,10 +267,10 @@ test('a commitment withdrawn by the issuer is never valid and the result reports
   const record = Buffer.from('a licence');
   const { receipt, anchored } = customAnchor(chain, contract, record, wire.COMMITMENT_STAMPED_SELECTOR);
   const one = await gateway(chain);
-  const two = await gateway(chain);
+  const two = await gateway(chain, { host: '::1' });
   t.after(() => Promise.all([one.close(), two.close()]));
-  const official = testNetwork({ rpcs: [{ url: one.url, operator: 'Operator One' }, { url: 'http://localhost:' + two.port, operator: 'Operator Two' }] });
-  const opts = { bytes: record, contract, trustCustomContract: true };
+  const official = testNetwork({ rpcs: [{ url: one.url, operator: 'Operator One' }, { url: two.url, operator: 'Operator Two' }] });
+  const opts = { bytes: record, contract, trustCustomContract: true, allowLoopback: true };
   const before = await verifyWith(official, receipt, opts, null);
   assert.strictEqual(before.status, 'valid');
   assert.strictEqual(before.revoked, false);
@@ -295,10 +295,10 @@ test('a stamp recorded with the open event layout, as the council template does,
   assert.strictEqual(reads, 0);
   assert.match(r.checks.find((c) => c.name === 'revocation').detail, /does not apply/);
   const one = await gateway(chain);
-  const two = await gateway(chain);
+  const two = await gateway(chain, { host: '::1' });
   t.after(() => Promise.all([one.close(), two.close()]));
-  const official = testNetwork({ rpcs: [{ url: one.url, operator: 'Operator One' }, { url: 'http://localhost:' + two.port, operator: 'Operator Two' }] });
-  const quorum = await verifyWith(official, receipt, { bytes: record, contract, trustCustomContract: true }, null);
+  const official = testNetwork({ rpcs: [{ url: one.url, operator: 'Operator One' }, { url: two.url, operator: 'Operator Two' }] });
+  const quorum = await verifyWith(official, receipt, { bytes: record, contract, trustCustomContract: true, allowLoopback: true }, null);
   assert.strictEqual(quorum.status, 'valid');
   assert.strictEqual(quorum.revoked, null);
 });
@@ -368,4 +368,105 @@ test('isProven accepts only a valid result reached through a proof or an officia
   assert.strictEqual(qstamp.isProven({ status: 'unproven', valid: false, proven: false, trust: 'single-endpoint' }), false);
   assert.strictEqual(qstamp.isProven({ status: 'valid', valid: true, proven: true, trust: 'single-endpoint' }), false);
   assert.strictEqual(qstamp.isProven(null), false);
+});
+
+function forgedEarlier(receipt, height) {
+  return Object.assign({}, receipt, { anchor: Object.assign({}, receipt.anchor, { time: receipt.anchor.time - 5, height }) });
+}
+
+test('a receipt claiming an earlier time at a height above the head of every endpoint is invalid, not indeterminate', async (t) => {
+  const chain = makeChain();
+  const record = Buffer.from('a tender notice');
+  const receipt = await stamped(chain, record);
+  const forged = forgedEarlier(receipt, chain.height + 50);
+  const one = await gateway(chain);
+  const two = await gateway(chain, { host: '::1' });
+  t.after(() => Promise.all([one.close(), two.close()]));
+  const official = testNetwork({ rpcs: [{ url: one.url, operator: 'Operator One' }, { url: two.url, operator: 'Operator Two' }] });
+  const r = await verifyWith(official, forged, { bytes: record, allowLoopback: true }, null);
+  assert.strictEqual(r.status, 'invalid');
+  assert.strictEqual(qstamp.isProven(r), false);
+  const denials = r.checks.filter((c) => c.name.startsWith('chain @ '));
+  assert.strictEqual(denials.length, 2);
+  for (const c of denials) {
+    assert.strictEqual(c.ok, false);
+    assert.strictEqual(c.transport, false);
+    assert.match(c.detail, /later than the anchor time/);
+  }
+  const custom = await qstamp.verify(forged, { bytes: record, clients: [client(chain, 'https://alpha.example'), client(chain, 'https://beta.example')], trustCustomEndpoints: true });
+  assert.strictEqual(custom.status, 'invalid');
+  const gap = {
+    block: (c, h) => {
+      if (Number(h) === c.height) {
+        const e = new Error('http 404');
+        e.code = 'QSTAMP_TRANSPORT';
+        e.reason = 'http 404';
+        e.transient = false;
+        throw e;
+      }
+      return Object.assign({}, c.blocks.get(Number(h)));
+    },
+  };
+  const sparse = await qstamp.verify(forged, { bytes: record, clients: [client(chain, 'https://alpha.example', gap), client(chain, 'https://beta.example', gap)], trustCustomEndpoints: true });
+  assert.strictEqual(sparse.status, 'invalid');
+  const genuine = await verifyWith(official, receipt, { bytes: record, allowLoopback: true }, null);
+  assert.strictEqual(genuine.status, 'valid');
+});
+
+test('an endpoint that lags behind the anchor and whose head is not later than the anchor time is not taken as a denial', async () => {
+  const chain = makeChain();
+  const record = Buffer.from('a fresh filing');
+  const receipt = await stamped(chain, record);
+  const behind = { nodeInfo: (c) => ({ chain_id: c.chainId, genesis_hash: c.genesis, head_height: receipt.anchor.height - 1 }) };
+  const lagging = await qstamp.verify(receipt, { bytes: record, clients: [client(chain, 'https://alpha.example', behind), client(chain, 'https://beta.example', behind)], trustCustomEndpoints: true });
+  assert.strictEqual(lagging.status, 'indeterminate');
+  const lag = lagging.checks.filter((c) => c.name.startsWith('chain @ '));
+  assert.strictEqual(lag.length, 2);
+  for (const c of lag) {
+    assert.strictEqual(c.transport, true);
+    assert.match(c.detail, /has not reached the height of the anchor$/);
+  }
+  const sameSecond = Object.assign({}, behind, {
+    block: (c, h) => {
+      const b = c.blocks.get(Number(h));
+      return b ? Object.assign({}, b, { time: receipt.anchor.time }) : null;
+    },
+  });
+  const tied = await qstamp.verify(receipt, { bytes: record, clients: [client(chain, 'https://alpha.example', sameSecond)], trustCustomEndpoints: true, trustSingleEndpoint: true });
+  assert.strictEqual(tied.status, 'indeterminate');
+  assert.strictEqual(tied.checks.find((c) => c.name === 'chain').transport, true);
+  const silent = Object.assign({}, behind, { block: () => { throw new Error('unavailable'); } });
+  const unread = await qstamp.verify(receipt, { bytes: record, clients: [client(chain, 'https://alpha.example', silent)], trustCustomEndpoints: true, trustSingleEndpoint: true });
+  assert.strictEqual(unread.status, 'indeterminate');
+});
+
+test('a height beyond the block rate of the network is refused before any endpoint is trusted', async () => {
+  const chain = makeChain();
+  const record = Buffer.from('a contract award');
+  const receipt = await stamped(chain, record);
+  const t0 = receipt.anchor.time - 5;
+  for (const height of [(t0 - net.genesisTime) * 20 + 200, (t0 - net.genesisTime) * 6 + 241, 2 ** 40]) {
+    const r = await qstamp.verify(forgedEarlier(receipt, height), { bytes: record, clients: [client(chain, 'https://alpha.example'), client(chain, 'https://beta.example')], trustCustomEndpoints: true });
+    assert.strictEqual(r.status, 'invalid', String(height));
+    assert.match(r.checks.find((c) => c.name === 'plausibility').detail, /higher than the chain can have reached/);
+  }
+  assert.ok(net.blocks.maxPerSecond <= 6);
+});
+
+test('a network given without bounds for its block heights is refused', async () => {
+  const chain = makeChain();
+  const record = Buffer.from('a sovereign record');
+  const receipt = await stamped(chain, record);
+  const base = JSON.parse(JSON.stringify(net));
+  for (const drop of ['blocks', 'genesisTime']) {
+    const loose = Object.assign({}, base);
+    delete loose[drop];
+    const r = await verifyWith(loose, receipt, { bytes: record, clients: [client(chain, 'https://alpha.example')], trustCustomEndpoints: true, trustSingleEndpoint: true }, null);
+    assert.strictEqual(r.status, 'indeterminate', drop);
+    assert.match(r.checks.find((c) => c.name === 'network').detail, /must give/);
+  }
+  for (const blocks of [{ minPerSecond: 1, maxPerSecond: 0, stallSeconds: 1, slack: 1 }, { minPerSecond: 7, maxPerSecond: 6, stallSeconds: 1, slack: 1 }, { minPerSecond: 1, maxPerSecond: 6, stallSeconds: -1, slack: 1 }, { maxPerSecond: 6 }]) {
+    const r = await verifyWith(Object.assign({}, base, { blocks }), receipt, { bytes: record }, null);
+    assert.strictEqual(r.status, 'indeterminate', JSON.stringify(blocks));
+  }
 });
