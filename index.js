@@ -10,6 +10,7 @@ const { verify, isProven } = require('./lib/verify');
 const { FORMAT, KINDS, validate } = require('./lib/receipt');
 const { NETWORKS } = require('./lib/networks');
 const { chainTime } = require('./lib/endpoints');
+const { deploymentDomain, recordDomain } = require('./lib/domain');
 
 module.exports = {
   stamp,
@@ -17,6 +18,8 @@ module.exports = {
   verify,
   isProven,
   chainTime,
+  deploymentDomain,
+  recordDomain,
   prepare,
   digestBytes,
   digestFile,

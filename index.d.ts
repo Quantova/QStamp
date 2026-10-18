@@ -162,7 +162,12 @@ export interface Network {
   contract: string;
   genesisTime: number;
   blocks: { minPerSecond: number; maxPerSecond: number; stallSeconds: number; slack: number };
-  finality: { epochBlocks: number | null; rosters: Readonly<Record<string, ReadonlyArray<RosterMember>>> };
+  finality: {
+    genesis?: string | null;
+    checkpoint?: { height: number; hash: string } | null;
+    epochBlocks: number | null;
+    rosters: Readonly<Record<string, ReadonlyArray<RosterMember>>>;
+  };
   requireFinality?: boolean;
 }
 
@@ -194,6 +199,14 @@ export function complete(pending: PendingStamp, options?: EndpointOptions & { ti
 export function chainTime(options?: ChainTimeOptions): Promise<ChainTime>;
 export function verify(receipt: unknown, options?: VerifyOptions): Promise<VerifyResult>;
 export function isProven(result: unknown): boolean;
+export interface DeploymentDomainRecord {
+  contract: string;
+  genesis: string;
+  domain: string;
+  recorded: string;
+}
+export function deploymentDomain(): string;
+export function recordDomain(ledger: string, entry: { contract: string; genesis: string; domain?: string | bigint }): DeploymentDomainRecord;
 export function prepare(records: StampRecord[]): { recs: Array<{ alg: DigestAlgorithm; digest: Buffer; salt: Buffer }>; root: Buffer; paths: Buffer[][] };
 export function digestBytes(bytes: Uint8Array, alg?: DigestAlgorithm): Buffer;
 export function digestFile(path: string, alg?: DigestAlgorithm): Promise<Buffer>;
