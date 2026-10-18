@@ -179,7 +179,7 @@ test('the vectors pin the testnet chain and well formed rosters', () => {
   assert.strictEqual(V.chain.contract, qstamp.NETWORKS.testnet.contract);
   assert.strictEqual(String(helpers.chainId(V.chain.name)), V.chain.id);
   assert.strictEqual(V.epoch, Math.floor(V.height / V.epoch_blocks));
-  assert.deepStrictEqual(V.source['Quantova-Chain'], '402a6f42505069f8c086360c3a203f50a380df78');
+  assert.deepStrictEqual(V.source['Quantova-Chain'], '6f8ffb8c6eb52fbba6e0787c4807ecea02e7c74e');
   assert.deepStrictEqual(V.source['QRC-CONSENSUS'], 'c3e731c8e7b371cddd9795b8a8f5261f4a46762b');
   assert.deepStrictEqual(V.source['Q-Crypto'], 'e47d6cd94e71c13b22e2990f8c2b0a2e3a2204d0');
   assert.deepStrictEqual(Object.keys(V.rosters).sort(), ['four', 'three']);

@@ -14,6 +14,8 @@ const F = require('../lib/finality');
 const { reader } = require('../lib/transport');
 const E = require('../lib/endpoints');
 const { checkNetwork } = require('../lib/networks');
+const { commitment, leafHash, tree } = require('../lib/merkle');
+const { kindValue } = require('../lib/receipt');
 const { makeChain, client, gateway, SEED, testNetwork, encode, sha3, headerBytes, wrapperBytes, merkleRoot, merkleSteps } = require('./chain');
 
 const ML_DSA_65_PK_BYTES = 1952;
@@ -193,14 +195,14 @@ test('a validator set is accepted only for the asked epoch and chain with a cons
   const pk = 'c3'.repeat(ML_DSA_65_PK_BYTES);
   const good = {
     epoch: 3,
-    chain_id: 'Q-test-net-1',
+    chain_id: 'Q-test-net-01',
     total_stake: '70',
     members: [
       { id: 1, stake: '30', bond_address: 'Q1X', attest_pk: pk, root: rootOf(1), root_slots: '64' },
       { id: 2, stake: '40', bond_address: 'Q1Y', attest_pk: pk, root: rootOf(2), root_slots: '1' },
     ],
   };
-  assert.deepStrictEqual(F.rosterFromValidatorSet(good, 3, 'Q-test-net-1').map((m) => [m.root, m.root_slots]), [[rootOf(1), '64'], [rootOf(2), '1']]);
+  assert.deepStrictEqual(F.rosterFromValidatorSet(good, 3, 'Q-test-net-01').map((m) => [m.root, m.root_slots]), [[rootOf(1), '64'], [rootOf(2), '1']]);
   const first = (change) => Object.assign({}, good, { members: [Object.assign({}, good.members[0], change), good.members[1]] });
   const without = (key) => {
     const m = Object.assign({}, good.members[0]);
@@ -231,7 +233,7 @@ test('a validator set is accepted only for the asked epoch and chain with a cons
     [first({ root_slots: '18446744073709551616' }), 3, /from 1 to 65536/],
   ];
   for (const [reply, epoch, pattern, name] of bad) {
-    assert.throws(() => F.rosterFromValidatorSet(reply, epoch, name || 'Q-test-net-1'), pattern);
+    assert.throws(() => F.rosterFromValidatorSet(reply, epoch, name || 'Q-test-net-01'), pattern);
   }
 });
 
@@ -273,7 +275,7 @@ test('the pinned roster hands every sortition root to the client core and a rost
     assert.strictEqual(v.status, 'indeterminate', String(pattern));
     assert.strictEqual(qstamp.isProven(v), false, String(pattern));
     assert.ok(v.checks.some((c) => c.name === 'network' && !c.ok && pattern.test(c.detail)), String(pattern));
-    const direct = await F.proveAnchor({ net: { chainId: pinned.chainId, finality: { epochBlocks: 2 ** 40, rosters: { 0: roster } } }, helpers: watching, sources: only(chain).map((client) => ({ client, label: client.base })), receipt });
+    const direct = await F.proveAnchor({ net: { chainId: pinned.chainId, genesis: pinned.genesis, finality: { epochBlocks: 2 ** 40, rosters: { 0: roster } } }, helpers: watching, sources: only(chain).map((client) => ({ client, label: client.base })), receipt });
     assert.strictEqual(direct.state, 'unavailable', String(pattern));
     assert.match(direct.detail, /the validator roster pinned for epoch 0 is not used, because/);
     assert.match(direct.detail, pattern);
@@ -685,6 +687,131 @@ test('an inclusion proof for another event, another root or a broken path does n
   }
 });
 
+const OTHER_GENESIS = sha3(Buffer.from('a later genesis that reuses the chain name')).toString('hex');
+
+function genesisNetwork(genesis, roster, extra) {
+  return testNetwork({ genesis, finality: Object.assign({ genesis, epochBlocks: 2 ** 40, rosters: { 0: roster || ROSTER } }, extra || {}) });
+}
+
+function stampedFor(chain, net, text) {
+  const sender = qcore.core.address(SEED, 0);
+  const kind = kindValue('document');
+  const record = Buffer.from(text);
+  const salt = sha3(Buffer.from('salt of ' + text));
+  const { root } = tree([leafHash('sha3-256', qstamp.digestBytes(record), salt)]);
+  const anchored = commitment(root, 1, { genesis: net.genesis, contract: net.contract, sender, kind });
+  const tx = chain.submitCall(sender, net.contract, wire.stampArgs(anchored, kind));
+  const at = chain.txs.get(tx);
+  const blk = chain.blocks.get(at.height);
+  const receipt = {
+    format: qstamp.RECEIPT_FORMAT,
+    chain: { id: net.chainId, genesis: net.genesis },
+    contract: net.contract,
+    kind,
+    record: { alg: 'sha3-256', digest: qstamp.digestBytes(record).toString('hex'), salt: salt.toString('hex') },
+    proof: { index: 0, size: 1, path: [] },
+    root: root.toString('hex'),
+    anchor: { tx, height: at.height, block: blk.block, time: blk.time, sender },
+  };
+  return { record, receipt };
+}
+
+test('a finality proof served from a chain with another genesis refutes the receipt, even under the same name and validators', async () => {
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const later = genesisNetwork(OTHER_GENESIS);
+  const { record, receipt } = stampedFor(chain, later, 'a stamp made on one genesis for another');
+  const r = await verifyWith(later, receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.strictEqual(r.status, 'invalid');
+  assert.strictEqual(qstamp.isProven(r), false);
+  assert.match(r.checks.find((c) => c.name === 'finality').detail, /not the genesis .* that the receipt and this network name, and a finality certificate does not bind a genesis/);
+  const fresh = genesisNetwork(OTHER_GENESIS, ROSTER.map((m) => Object.assign({}, m, { attest_pk: 'dd'.repeat(ML_DSA_65_PK_BYTES) })));
+  const control = await verifyWith(fresh, receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.notStrictEqual(control.status, 'valid');
+  assert.strictEqual(qstamp.isProven(control), false);
+  const honest = await stamped(chain, Buffer.from('a stamp on its own genesis'));
+  const relabelled = JSON.parse(JSON.stringify(honest));
+  relabelled.chain.genesis = OTHER_GENESIS;
+  const moved = await verifyWith(later, relabelled, { bytes: Buffer.from('a stamp on its own genesis'), clients: only(chain), trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.strictEqual(moved.status, 'invalid');
+  assert.strictEqual(qstamp.isProven(moved), false);
+});
+
+test('a proving endpoint that names no genesis or another chain name never proves a receipt', async () => {
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const record = Buffer.from('a genesis left unsaid');
+  const receipt = await stamped(chain, record);
+  const silent = only(chain, { nodeInfo: (c) => ({ chain_id: c.chainId, head_height: c.height }) });
+  const r = await verifyWith(pinned, receipt, { bytes: record, clients: silent, trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.notStrictEqual(r.status, 'valid');
+  assert.strictEqual(qstamp.isProven(r), false);
+  const direct = await F.proveAnchor({
+    net: pinned, receipt, helpers: stubHelpers, leaf: [], selectors: [wire.STAMPED_SELECTOR], data: '',
+    sources: silent.map((c) => ({ client: c, label: c.base })),
+  });
+  assert.strictEqual(direct.state, 'unavailable');
+  assert.match(direct.detail, /did not name the genesis of the chain it serves/);
+  const renamed = await F.proveAnchor({
+    net: pinned, receipt, helpers: stubHelpers, leaf: [], selectors: [wire.STAMPED_SELECTOR], data: '',
+    sources: only(chain).map((c) => ({ client: c, label: c.base, info: { chain_id: 'Q-dev-net-7', genesis_hash: chain.genesis } })),
+  });
+  assert.strictEqual(renamed.state, 'refuted');
+});
+
+test('a receipt for a genesis other than the one the rosters are pinned for is refuted before any endpoint is asked', async () => {
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const receipt = await stamped(chain, Buffer.from('pinned elsewhere'));
+  let asked = 0;
+  const watcher = only(chain, { finality: (c, h) => { asked += 1; return c.finalityAt(Number(h)); } });
+  const sources = watcher.map((c) => ({ client: c, label: c.base }));
+  const elsewhere = await F.proveAnchor({ net: genesisNetwork(OTHER_GENESIS), receipt, helpers: stubHelpers, sources });
+  assert.strictEqual(elsewhere.state, 'refuted');
+  const bare = await F.proveAnchor({ net: { chainId: pinned.chainId, finality: { epochBlocks: 2 ** 40, rosters: { 0: ROSTER } } }, receipt, helpers: stubHelpers, sources });
+  assert.strictEqual(bare.state, 'unavailable');
+  assert.match(bare.detail, /no genesis is pinned/);
+  assert.strictEqual(asked, 0);
+  assert.strictEqual(F.pinnedGenesis(pinned), pinned.genesis);
+  assert.strictEqual(F.pinnedGenesis(qstamp.NETWORKS.testnet), qstamp.NETWORKS.testnet.finality.genesis);
+  assert.strictEqual(qstamp.NETWORKS.testnet.finality.genesis, qstamp.NETWORKS.testnet.genesis);
+});
+
+test('a pinned checkpoint ties the proving endpoint to its genesis', async () => {
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const first = Math.min(...chain.blocks.keys());
+  const record = Buffer.from('a checkpointed record');
+  const receipt = await stamped(chain, record);
+  const hashAt = (h) => sha3(chain.headerAt(h, chain.blocks.get(h).time)).toString('hex');
+  const at = (hash) => genesisNetwork(chain.genesis, ROSTER, { checkpoint: { height: first, hash } });
+  const good = await verifyWith(at(hashAt(first)), receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.strictEqual(good.status, 'valid');
+  assert.strictEqual(qstamp.isProven(good), true);
+  const other = sha3(Buffer.from('the checkpoint of another chain')).toString('hex');
+  const certifiedElsewhere = await verifyWith(at(other), receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.strictEqual(certifiedElsewhere.status, 'invalid');
+  assert.match(certifiedElsewhere.checks.find((c) => c.name === 'finality').detail, /not the pinned checkpoint/);
+  const uncertified = only(chain, { finality: (c, h) => (Number(h) === first ? Object.assign(c.finalityAt(first), { certificate: '00' }) : c.finalityAt(Number(h))) });
+  const unproven = await verifyWith(at(other), receipt, { bytes: record, clients: uncertified, trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.notStrictEqual(unproven.status, 'valid');
+  assert.notStrictEqual(unproven.status, 'invalid');
+  assert.ok(unproven.notices.concat(unproven.checks.map((c) => c.detail)).some((n) => /other than the pinned one/.test(n)));
+  const missing = only(chain, { finality: (c, h) => (Number(h) === first ? null : c.finalityAt(Number(h))) });
+  const absent = await verifyWith(at(hashAt(first)), receipt, { bytes: record, clients: missing, trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.notStrictEqual(absent.status, 'valid');
+  assert.strictEqual(qstamp.isProven(absent), false);
+});
+
+test('a network refuses a finality pin for another genesis or a malformed checkpoint', () => {
+  assert.throws(() => checkNetwork(testNetwork({ finality: { genesis: OTHER_GENESIS, epochBlocks: 2 ** 40, rosters: { 0: ROSTER } } })), /pinned to a genesis other than the genesis of the network/);
+  for (const checkpoint of [{ height: -1, hash: '00'.repeat(32) }, { height: 1, hash: 'AA'.repeat(32) }, { height: 1 }, { height: 1.5, hash: '00'.repeat(32) }, []]) {
+    assert.throws(() => checkNetwork(genesisNetwork(pinned.genesis, ROSTER, { checkpoint })), /checkpoint gives the height of a certified block/, JSON.stringify(checkpoint));
+  }
+  assert.doesNotThrow(() => checkNetwork(genesisNetwork(pinned.genesis, ROSTER, { checkpoint: { height: 0, hash: pinned.genesis } })));
+  assert.doesNotThrow(() => checkNetwork(testNetwork({ finality: { epochBlocks: 2 ** 40, rosters: { 0: ROSTER } } })));
+});
+
 test('no finality request is made while no roster is pinned', async () => {
   const chain = makeChain();
   const record = Buffer.from('no pin yet');
@@ -706,7 +833,9 @@ test('the proof helpers are detected on the client core under their published na
   assert.strictEqual(F.helpersComplete(F.helpersFrom({ core: { verifyFinality: f, verifyEvent: f, decodeEvent: f, chainIdFromName: f } })), false);
   const today = F.helpersFrom(qcore);
   assert.ok(F.helpersComplete(today));
-  assert.strictEqual(require('@quantovainc/qcore/package.json').version, '0.5.9');
+  assert.strictEqual(require('@quantovainc/qcore/package.json').version, '0.6.1');
+  assert.strictEqual(String(qcore.core.chainIdFromName(qstamp.NETWORKS.testnet.chainId)), '6995079887857407393');
+  assert.throws(() => qcore.core.chainIdFromName('Q-test-net-1'), /retired/);
   assert.strictEqual(require('@quantovainc/qcore/package.json').version, require('../package.json').dependencies['@quantovainc/qcore']);
   for (const name of ['verifyFinality', 'verifyEvent', 'decodeEvent', 'verifyTransaction', 'chainIdFromName']) assert.strictEqual(typeof qcore.core[name], 'function', name);
 });
