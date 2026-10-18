@@ -16,7 +16,7 @@ const qstamp = require('..');
 const { reader, tlsSettings } = require('../lib/transport');
 const { waitFinal, clientWith } = require('../lib/client');
 const E = require('../lib/endpoints');
-const { makeChain, client, gateway, SEED } = require('./chain');
+const { makeChain, client, gateway, SEED, testNetwork } = require('./chain');
 
 const net = qstamp.NETWORKS.testnet;
 const TX = 'QTX1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
@@ -105,7 +105,14 @@ test('an abort signal stops a request at once', async (t) => {
   await assert.rejects(qstamp.chainTime(Object.assign({ rpc: slow.url, signal: controller.signal }, loopback)), /aborted/);
   await assert.rejects(qstamp.chainTime({ signal: {} }), /AbortSignal/);
   await assert.rejects(qstamp.chainTime({ deadlineMs: 5 }), /deadlineMs/);
-  await assert.rejects(qstamp.verify({}, { deadlineMs: 'soon' }), /deadlineMs/);
+  for (const bad of [{ deadlineMs: 'soon' }, { deadlineMs: 5 }, { signal: {} }]) {
+    const r = await qstamp.verify({}, bad);
+    assert.strictEqual(r.status, 'indeterminate');
+    assert.strictEqual(r.valid, false);
+    assert.strictEqual(qstamp.isProven(r), false);
+    assert.match(r.checks[0].detail, /deadlineMs|AbortSignal/);
+    assert.deepStrictEqual(Object.keys(r).sort(), ['checks', 'contentChecked', 'endpoints', 'notices', 'officialEndpoints', 'operators', 'proven', 'revoked', 'status', 'trust', 'trustDetail', 'valid']);
+  }
   await assert.rejects(qstamp.stamp({ seed: SEED, index: 0, records: [{ digest: Buffer.alloc(32, 5) }], signal: controller.signal, clients: [] }), /aborted/);
 });
 
@@ -245,4 +252,23 @@ test('https requests always ask for certificate checks and TLS 1.2 or later', ()
   assert.strictEqual(seen.length, 1);
   assert.strictEqual(seen[0].rejectUnauthorized, true);
   assert.strictEqual(seen[0].minVersion, 'TLSv1.2');
+});
+
+test('a network endpoint may carry its own certificate authority and stays official', { skip: !certs }, async (t) => {
+  const chain = makeChain({ time: Math.floor(Date.now() / 1000) - 2 });
+  const gw = await gateway(chain, { tls: { key: certs.key, cert: certs.cert } });
+  t.after(() => gw.close());
+  const pinned = testNetwork({ rpcs: [{ url: gw.url, operator: 'Operator One', ca: certs.ca.toString('utf8') }] });
+  const plan = await E.endpointsFor({}, pinned, 'verify');
+  assert.strictEqual(plan.refused, null);
+  const [entry] = plan.entries;
+  assert.strictEqual(entry.official, true);
+  assert.strictEqual(entry.operator, 'Operator One');
+  assert.strictEqual((await E.readerOf(entry).nodeInfo()).chain_id, net.chainId);
+  const bare = testNetwork({ rpcs: [{ url: gw.url, operator: 'Operator One' }] });
+  const [plain] = (await E.endpointsFor({}, bare, 'verify')).entries;
+  await assert.rejects(E.readerOf(plain).nodeInfo(), (e) => e.reason === 'certificate rejected');
+  const other = pki();
+  const swapped = E.describe({ url: gw.url, ca: other.ca }, pinned);
+  assert.strictEqual(swapped.official, false);
 });

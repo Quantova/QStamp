@@ -294,9 +294,11 @@ function gateway(chain, overrides) {
   };
   const server = o.tls ? https.createServer(o.tls, handler) : http.createServer(handler);
   return new Promise((resolve) => {
-    server.listen(0, '127.0.0.1', () => {
+    const host = o.host || '127.0.0.1';
+    server.listen(0, host, () => {
       const { port } = server.address();
-      resolve({ url: (o.tls ? 'https' : 'http') + '://127.0.0.1:' + port, port, close: () => new Promise((r) => server.close(r)) });
+      const shown = host.includes(':') ? '[' + host + ']' : host;
+      resolve({ url: (o.tls ? 'https' : 'http') + '://' + shown + ':' + port, port, close: () => new Promise((r) => server.close(r)) });
     });
   });
 }

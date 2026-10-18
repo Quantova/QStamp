@@ -6,7 +6,12 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const http = require('http');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { core } = require('@quantovainc/qcore');
 const qstamp = require('..');
+const D = require('../lib/deadline');
 const { makeChain, client, gateway, SEED } = require('./chain');
 
 function options(chain, extra) {
@@ -109,4 +114,120 @@ test('text from the client core or an endpoint never reaches the error message',
     return true;
   });
   assert.ok(asked >= 2);
+});
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function slowFinality(chain, settleMs) {
+  const finalNonce = new Map();
+  const finalAt = new Map();
+  const signed = [];
+  const wrap = (base) => {
+    const c = client(chain, base);
+    c.call = async (seed, index, to, argsHex) => {
+      const from = core.address(seed, index);
+      const nonce = finalNonce.get(from) || 0;
+      signed.push(nonce);
+      const txId = chain.submitCall(from, to, argsHex);
+      finalAt.set(txId, Date.now() + settleMs);
+      setTimeout(() => finalNonce.set(from, nonce + 1), settleMs);
+      return { outcome: { verdict: 'accepted', tx_id: txId } };
+    };
+    const inner = c.transaction;
+    c.transaction = async (id) => {
+      const tx = await inner(id);
+      return finalAt.has(id) && Date.now() < finalAt.get(id) ? Object.assign({}, tx, { status: 'pending' }) : tx;
+    };
+    return c;
+  };
+  return { clients: () => [wrap('https://alpha.example'), wrap('https://beta.example')], signed };
+}
+
+test('a waiter that gives up never releases the account lock held by an earlier stamp', async () => {
+  const chain = makeChain();
+  const m = slowFinality(chain, 700);
+  const run = (tag, extra) => qstamp.stamp(Object.assign(options(chain, {
+    records: [{ digest: qstamp.digestBytes(Buffer.from(tag)) }], clients: m.clients(), timeoutMs: 5000,
+  }), extra || {}));
+  const a = run('first');
+  await sleep(50);
+  const b = run('impatient', { deadlineMs: 150 });
+  await assert.rejects(b, /still in progress/);
+  const c = run('third');
+  const [ra, rc] = await Promise.all([a, c]);
+  assert.strictEqual(ra.length, 1);
+  assert.strictEqual(rc.length, 1);
+  assert.deepStrictEqual(m.signed, [0, 1]);
+});
+
+test('onPending is bounded by the deadline of the stamp and a stuck callback releases the account', async () => {
+  const chain = makeChain();
+  const started = Date.now();
+  let pendingSeen = null;
+  await assert.rejects(qstamp.stamp(options(chain, {
+    records: [{ digest: qstamp.digestBytes(Buffer.from('stuck')) }],
+    deadlineMs: 600,
+    onPending: () => new Promise(() => {}),
+  })), (e) => {
+    pendingSeen = e.pending;
+    return /onPending did not finish/.test(e.message);
+  });
+  assert.ok(Date.now() - started < 2000);
+  assert.strictEqual(pendingSeen && pendingSeen.format, qstamp.PENDING_FORMAT);
+  const next = await qstamp.stamp(options(chain, { records: [{ digest: qstamp.digestBytes(Buffer.from('next')) }], deadlineMs: 2000 }));
+  assert.strictEqual(next.length, 1);
+});
+
+test('callbacks and client objects run outside the deadline and signal of the stamp', async () => {
+  const chain = makeChain();
+  const earlierRecord = Buffer.from('an unrelated earlier record');
+  const [earlier] = await qstamp.stamp(options(chain, { index: 1, records: [{ digest: qstamp.digestBytes(earlierRecord) }] }));
+  const later = () => qstamp.verify(earlier, { bytes: earlierRecord, clients: [client(chain, 'https://alpha.example'), client(chain, 'https://beta.example')], trustCustomEndpoints: true });
+  let queued;
+  const after = new Promise((resolve) => { queued = resolve; });
+  let inCallback = null;
+  let inClient = null;
+  const watched = client(chain, 'https://beta.example');
+  const plain = watched.nodeInfo;
+  watched.nodeInfo = async () => {
+    inClient = D.current().deadline;
+    return plain();
+  };
+  const controller = new AbortController();
+  await qstamp.stamp(options(chain, {
+    records: [{ digest: qstamp.digestBytes(Buffer.from('a new record')) }],
+    clients: [client(chain, 'https://alpha.example'), watched],
+    deadlineMs: 400,
+    signal: controller.signal,
+    onPending: () => {
+      inCallback = D.current().deadline;
+      setTimeout(() => later().then(queued), 600);
+    },
+  }));
+  controller.abort();
+  assert.strictEqual(inCallback, Infinity);
+  assert.strictEqual(inClient, Infinity);
+  const r = await after;
+  assert.strictEqual(r.status, 'unproven', JSON.stringify(r.checks.filter((c) => !c.ok)));
+});
+
+test('verify stops hashing a file at the deadline or on the signal and reports it indeterminate', async (t) => {
+  const chain = makeChain();
+  const record = Buffer.from('a large record');
+  const [receipt] = await qstamp.stamp(options(chain, { records: [{ digest: qstamp.digestBytes(record) }] }));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qstamp-big-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'big.bin');
+  fs.closeSync(fs.openSync(file, 'w'));
+  fs.truncateSync(file, 2 ** 31);
+  const controller = new AbortController();
+  controller.abort();
+  const aborted = await qstamp.verify(receipt, { file, signal: controller.signal });
+  assert.strictEqual(aborted.status, 'indeterminate');
+  assert.strictEqual(aborted.checks.find((c) => c.name === 'content').transport, true);
+  const started = Date.now();
+  const late = await qstamp.verify(receipt, { file, deadlineMs: 200 });
+  assert.strictEqual(late.status, 'indeterminate');
+  assert.match(late.checks.find((c) => c.name === 'content').detail, /deadline/);
+  assert.ok(Date.now() - started < 2000, 'took ' + (Date.now() - started) + ' ms');
 });
