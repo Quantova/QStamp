@@ -113,6 +113,10 @@ export interface VerifyResult {
 export interface NetworkEndpoint {
   url: string;
   operator: string;
+  ca?: string | Buffer;
+  cert?: string | Buffer;
+  key?: string | Buffer;
+  insecure?: true;
 }
 
 export interface RosterMember {
@@ -131,6 +135,7 @@ export interface Network {
   genesisTime: number;
   blocks: { minPerSecond: number; maxPerSecond: number; stallSeconds: number; slack: number };
   finality: { epochBlocks: number | null; rosters: Readonly<Record<string, ReadonlyArray<RosterMember>>> };
+  requireFinality?: boolean;
 }
 
 export interface CommitmentContext {

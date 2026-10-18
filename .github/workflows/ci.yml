@@ -22,7 +22,7 @@ env:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       matrix:
@@ -44,7 +44,7 @@ jobs:
         run: npm audit --audit-level=low
 
   contract:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -65,14 +65,14 @@ jobs:
           fi
       - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
         with:
-          toolchain: stable
+          toolchain: "1.98.0"
       - name: rebuild the contract container and the issuer and council template interfaces from source
         env:
           QSTAMP_TEMPLATES_DIR: ${{ github.workspace }}/templates
         run: bash scripts/build-contract.sh
 
   secrets:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
