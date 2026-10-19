@@ -173,6 +173,8 @@ test('official endpoints run by two different operators that agree make a receip
   assert.strictEqual(r.trust, 'official-quorum');
   assert.strictEqual(r.officialEndpoints, true);
   assert.strictEqual(qstamp.isProven(r), true);
+  assert.strictEqual(qstamp.isProven(Object.assign({}, r)), false);
+  assert.strictEqual(qstamp.isProven(JSON.parse(JSON.stringify(r))), false);
   assert.deepStrictEqual(r.operators.sort(), ['Operator One', 'Operator Two']);
 });
 
@@ -314,7 +316,6 @@ test('a custom contract receipt cannot be valid when the withdrawal state cannot
 });
 
 test('a fabricated anchor never verifies valid through any combination of options', async () => {
-  const chain = makeChain();
   const record = Buffer.from('never stamped');
   const sender = core.address(new Uint8Array(32).fill(0x66), 0);
   const digest = qstamp.digestBytes(record);
@@ -361,9 +362,9 @@ test('a fabricated anchor never verifies valid through any combination of option
   }
 });
 
-test('isProven accepts only a valid result reached through a proof or an official quorum', () => {
-  assert.strictEqual(qstamp.isProven({ status: 'valid', valid: true, proven: true, trust: 'official-quorum' }), true);
-  assert.strictEqual(qstamp.isProven({ status: 'valid', valid: true, proven: true, trust: 'finality-proof' }), true);
+test('isProven accepts only a valid result reached through a proof or an official quorum and never a hand made one', () => {
+  assert.strictEqual(qstamp.isProven({ status: 'valid', valid: true, proven: true, trust: 'official-quorum' }), false);
+  assert.strictEqual(qstamp.isProven({ status: 'valid', valid: true, proven: true, trust: 'finality-proof' }), false);
   assert.strictEqual(qstamp.isProven({ status: 'valid', valid: true, trust: 'official-quorum' }), false);
   assert.strictEqual(qstamp.isProven({ status: 'unproven', valid: false, proven: false, trust: 'single-endpoint' }), false);
   assert.strictEqual(qstamp.isProven({ status: 'valid', valid: true, proven: true, trust: 'single-endpoint' }), false);
@@ -469,4 +470,25 @@ test('a network given without bounds for its block heights is refused', async ()
     const r = await verifyWith(Object.assign({}, base, { blocks }), receipt, { bytes: record }, null);
     assert.strictEqual(r.status, 'indeterminate', JSON.stringify(blocks));
   }
+});
+
+test('a misspelled or unknown option is refused so a check is never skipped silently', async () => {
+  for (const options of [{ expectedSendr: 'Q1' }, { trustCustomEndpoint: true }, { note: 'x' }]) {
+    const r = await qstamp.verify({}, options);
+    assert.strictEqual(r.valid, false);
+    assert.match(r.checks.map((c) => c.detail).join(' '), /is not an option of verify/);
+  }
+  assert.strictEqual((await qstamp.verify({}, [])).valid, false);
+});
+
+test('a misspelled or unknown option of stamp, complete or chainTime is refused before anything is signed', async () => {
+  await assert.rejects(qstamp.stamp({ seed: new Uint8Array(32).fill(5), index: 0, records: [{ digest: Buffer.alloc(32, 1) }], untl: '2030-01-01T00:00:00.000Z' }), /is not an option of stamp/);
+  await assert.rejects(qstamp.complete({ format: 'qstamp-pending/1' }, { timeOutMs: 1000 }), /is not an option of complete/);
+  await assert.rejects(qstamp.chainTime({ trustSingleEndPoint: true }), /is not an option of chainTime/);
+});
+
+test('a batch above the record limit is refused before any record is hashed', () => {
+  const started = Date.now();
+  assert.throws(() => qstamp.prepare(new Array((1 << 20) + 1).fill({ digest: Buffer.alloc(32, 1) })), /at most 1048576 records/);
+  assert.ok(Date.now() - started < 1000);
 });

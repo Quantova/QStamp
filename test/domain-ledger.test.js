@@ -258,3 +258,14 @@ test('a close or cleanup error after the ledger is written never reports a failu
   assert.ok(!fs.existsSync(path.join(dir, '.domains.json.lock')));
   assert.strictEqual(D.recordDomain(file, { contract, genesis: later }).genesis, later);
 });
+
+test('the domain ledger refuses to run on Windows where folder owners and modes cannot be checked', (t) => {
+  const dir = place(t);
+  const was = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+  try {
+    assert.throws(() => D.recordDomain(path.join(dir, 'domains.json'), { contract, genesis }), /Windows/);
+  } finally {
+    Object.defineProperty(process, 'platform', was);
+  }
+});

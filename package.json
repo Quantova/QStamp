@@ -15,7 +15,7 @@
     "qstamp": "bin/qstamp.js"
   },
   "scripts": {
-    "lint": "node scripts/lint.js",
+    "lint": "node scripts/lint.js && eslint .",
     "test": "node --test test/*.test.js",
     "contract": "bash scripts/build-contract.sh"
   },
@@ -61,5 +61,11 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.1",
+    "eslint": "9.39.1",
+    "eslint-plugin-security": "3.0.1",
+    "globals": "16.5.0"
   }
 }

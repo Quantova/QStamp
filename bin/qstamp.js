@@ -47,7 +47,7 @@ const FLAGS = {
 };
 
 function safe(value) {
-  return String(value).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, ' ');
+  return String(value).replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff\ufff9-\ufffb\u00ad\u180e\ufe00-\ufe0f\u{e0000}-\u{e007f}]/gu, ' ');
 }
 
 function usageError(message) {

@@ -65,7 +65,7 @@ When verification succeeds, the following statements hold.
 1. It does not show that the content is true, lawful or correct. It shows only that the content existed unchanged at a point in time.
 2. It does not show that the record did not exist earlier. It sets a latest possible time, not an earliest one.
 3. It does not identify a natural or legal person. The signer is a chain address, and linking an address to an organisation is a separate attestation.
-4. On its own it does not make an organisation compliant with any regulation, and it is not a qualified electronic time stamp within the meaning of the eIDAS regulation unless issued through a certified trust service provider.
+4. On its own it does not satisfy the requirements of any regulation for an organisation, and it is not a qualified electronic time stamp within the meaning of the eIDAS regulation unless issued through a certified trust service provider.
 
 ## Trust model of this release
 

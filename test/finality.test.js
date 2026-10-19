@@ -403,7 +403,7 @@ test('less than two thirds of the stake never proves an anchor, even when a help
   const strict = await verifyWith(pinned, receipt, opts, { helpers: stubHelpers });
   assert.strictEqual(strict.status, 'unproven');
   const lax = Object.assign({}, stubHelpers, {
-    finality: throughCheck((chainId, genesis, headerHex, certHex) => {
+    finality: throughCheck((chainId, genesis, headerHex) => {
       if (genesis !== qstamp.NETWORKS.testnet.genesis) throw new Error('the certificate does not verify under this genesis');
       const bytes = Buffer.from(headerHex, 'hex');
       const header = F.decodeHeader(bytes);
@@ -414,7 +414,7 @@ test('less than two thirds of the stake never proves an anchor, even when a help
   assert.strictEqual(r.status, 'unproven');
   assert.ok(r.notices.some((n) => /less than two thirds/.test(n)));
   const inflated = Object.assign({}, stubHelpers, {
-    finality: throughCheck((chainId, genesis, headerHex, certHex) => {
+    finality: throughCheck((chainId, genesis, headerHex) => {
       if (genesis !== qstamp.NETWORKS.testnet.genesis) throw new Error('the certificate does not verify under this genesis');
       const bytes = Buffer.from(headerHex, 'hex');
       const header = F.decodeHeader(bytes);
