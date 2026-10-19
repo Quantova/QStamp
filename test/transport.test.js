@@ -237,6 +237,20 @@ test('a client core that does not honour the fetch option is refused before any 
   assert.strictEqual(typeof real.nodeInfo, 'function');
 });
 
+test('a client core that would sign under another genesis is never used to stamp', async () => {
+  class Loose extends qcore.Client {
+    constructor(base, options) {
+      const rest = Object.assign({}, options);
+      delete rest.genesisHash;
+      super(base, rest);
+    }
+  }
+  await assert.rejects(clientWith(Loose, 'https://rpc.example', net.chainId, () => true, null, net.genesis), /does not refuse a gateway that reports another genesis/);
+  await assert.rejects(clientWith(qcore.Client, 'https://rpc.example', net.chainId, () => true, null, 'AB'.repeat(32)), /64 lowercase hexadecimal/);
+  const held = await clientWith(qcore.Client, 'https://rpc.example', net.chainId, () => true, null, net.genesis);
+  assert.strictEqual(typeof held.call, 'function');
+});
+
 test('https requests always ask for certificate checks and TLS 1.2 or later', () => {
   const seen = [];
   const original = https.request;
@@ -271,4 +285,21 @@ test('a network endpoint may carry its own certificate authority and stays offic
   const other = pki();
   const swapped = E.describe({ url: gw.url, ca: other.ca }, pinned);
   assert.strictEqual(swapped.official, false);
+});
+
+test('a deadline is not stretched when the wall clock is set back', async () => {
+  const D = require('../lib/deadline');
+  const real = Date.now;
+  const started = real();
+  let calls = 0;
+  Date.now = () => {
+    calls += 1;
+    return calls > 1 ? real() - 3600000 : real();
+  };
+  try {
+    await assert.rejects(D.within(new Promise(() => {}), D.controlOf({ deadlineMs: 300 }, 1000)), (e) => D.isStop(e) || /deadline/i.test(String(e && e.message)));
+  } finally {
+    Date.now = real;
+  }
+  assert.ok(real() - started < 2000, String(real() - started));
 });

@@ -16,7 +16,7 @@ const E = require('../lib/endpoints');
 const { checkNetwork } = require('../lib/networks');
 const { commitment, leafHash, tree } = require('../lib/merkle');
 const { kindValue } = require('../lib/receipt');
-const { makeChain, client, gateway, SEED, testNetwork, encode, sha3, headerBytes, wrapperBytes, merkleRoot, merkleSteps } = require('./chain');
+const { makeChain, client, gateway, SEED, testNetwork, encode, sha3, headerBytes, wrapperBytes, merkleRoot, merkleSteps, checkpointOf, checkpointReply } = require('./chain');
 
 const ML_DSA_65_PK_BYTES = 1952;
 
@@ -26,15 +26,15 @@ const member = (id, stake, b) => ({ id, stake, attest_pk: b.repeat(ML_DSA_65_PK_
 const ROSTER = [member(1, '40', 'a1'), member(2, '30', 'b2'), member(3, '30', 'c3')];
 const OUTSIDER = 'ee'.repeat(ML_DSA_65_PK_BYTES);
 
-function sign(pk, hash, chainId) {
-  return sha3(Buffer.from('stub'), Buffer.from(pk, 'hex'), Buffer.from(hash, 'hex'), Buffer.from(String(chainId))).toString('hex');
+function sign(pk, hash, chainId, genesis) {
+  return sha3(Buffer.from('stub'), Buffer.from(pk, 'hex'), Buffer.from(hash, 'hex'), Buffer.from(String(chainId)), Buffer.from(genesis, 'hex')).toString('hex');
 }
 
-function certificate(ids, pkOf, credentialOf) {
+function certificate(ids, pkOf, credentialOf, genesis) {
   return (height, hash) => Buffer.from(JSON.stringify({
     height,
     hash,
-    sigs: Object.fromEntries(ids.map((id) => [id, sign(pkOf ? pkOf(id) : ROSTER.find((m) => m.id === id).attest_pk, hash, CHAIN_ID)])),
+    sigs: Object.fromEntries(ids.map((id) => [id, sign(pkOf ? pkOf(id) : ROSTER.find((m) => m.id === id).attest_pk, hash, CHAIN_ID, genesis || qstamp.NETWORKS.testnet.genesis)])),
     credentials: Object.fromEntries(ids.map((id) => [id, credentialOf ? credentialOf(id) : rootOf(id)])),
   })).toString('hex');
 }
@@ -56,8 +56,16 @@ function decodeLeaf(hex) {
   return JSON.stringify({ contract, selector, data });
 }
 
+const CHECK = require('../lib/finality-check.json');
+const realFinality = (...args) => qcore.core.verifyFinality(...args);
+const throughCheck = (fn) => function finality(chainId, genesis, headerHex, certHex, rosterJson) {
+  if (headerHex === CHECK.header) return realFinality(chainId, genesis, headerHex, certHex, rosterJson);
+  return fn(chainId, genesis, headerHex, certHex, rosterJson);
+};
+
 const stubHelpers = {
-  finality(chainId, headerHex, certHex, rosterJson) {
+  finality: throughCheck((chainId, genesis, headerHex, certHex, rosterJson) => {
+    if (typeof genesis !== 'string' || !/^[0-9a-f]{64}$/.test(genesis)) throw new Error('the genesis hash is 64 lowercase hexadecimal characters');
     const roster = JSON.parse(rosterJson);
     const bytes = Buffer.from(headerHex, 'hex');
     const header = F.decodeHeader(bytes);
@@ -74,7 +82,7 @@ const stubHelpers = {
     for (const [id, sig] of Object.entries(cert.sigs)) {
       const signer = roster.find((m) => String(m.id) === id);
       if (!signer) throw new Error('an attestation comes from a validator outside the roster');
-      if (sig !== sign(signer.attest_pk, hash, chainId)) throw new Error('an attestation signature does not verify');
+      if (sig !== sign(signer.attest_pk, hash, chainId, genesis)) throw new Error('an attestation signature does not verify');
       if (!cert.credentials || cert.credentials[id] !== signer.root) throw new Error('an attestation does not prove its committee membership');
       signed += BigInt(signer.stake);
     }
@@ -83,7 +91,7 @@ const stubHelpers = {
       height: String(header.height), hash, event_root: header.eventRoot.toString('hex'), transaction_root: header.transactionRoot.toString('hex'), time: String(header.time),
       signed_stake: String(signed), total_stake: String(total),
     });
-  },
+  }),
   event(rootHex, leafHex, stepsJson) {
     return F.includedLocally(Buffer.from(rootHex, 'hex'), Buffer.from(leafHex, 'hex'), JSON.parse(stepsJson));
   },
@@ -244,9 +252,9 @@ test('the pinned roster hands every sortition root to the client core and a rost
   const receipt = await stamped(chain, record);
   const seen = [];
   const watching = Object.assign({}, stubHelpers, {
-    finality(chainId, headerHex, certHex, rosterJson) {
-      seen.push(JSON.parse(rosterJson));
-      return stubHelpers.finality(chainId, headerHex, certHex, rosterJson);
+    finality(chainId, genesis, headerHex, certHex, rosterJson) {
+      if (headerHex !== CHECK.header && genesis === qstamp.NETWORKS.testnet.genesis) seen.push(JSON.parse(rosterJson));
+      return stubHelpers.finality(chainId, genesis, headerHex, certHex, rosterJson);
     },
   });
   const r = await verifyWith(pinned, receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: watching });
@@ -357,8 +365,8 @@ test('a certificate from keys outside the pinned roster does not prove a fabrica
   const root = merkleRoot([sha3(Buffer.from([0]), leaf)]);
   const bytes = headerBytes(height, time, root);
   const hash = sha3(bytes).toString('hex');
-  const forgedCert = Buffer.from(JSON.stringify({ height, hash, sigs: { 9: sign(OUTSIDER, hash, CHAIN_ID) } })).toString('hex');
-  const stolenIds = Buffer.from(JSON.stringify({ height, hash, sigs: { 1: sign(OUTSIDER, hash, CHAIN_ID), 2: sign(OUTSIDER, hash, CHAIN_ID) } })).toString('hex');
+  const forgedCert = Buffer.from(JSON.stringify({ height, hash, sigs: { 9: sign(OUTSIDER, hash, CHAIN_ID, net.genesis) } })).toString('hex');
+  const stolenIds = Buffer.from(JSON.stringify({ height, hash, sigs: { 1: sign(OUTSIDER, hash, CHAIN_ID, net.genesis), 2: sign(OUTSIDER, hash, CHAIN_ID, net.genesis) } })).toString('hex');
   const r0 = prepared.recs[0];
   const receipt = {
     format: qstamp.RECEIPT_FORMAT,
@@ -395,21 +403,23 @@ test('less than two thirds of the stake never proves an anchor, even when a help
   const strict = await verifyWith(pinned, receipt, opts, { helpers: stubHelpers });
   assert.strictEqual(strict.status, 'unproven');
   const lax = Object.assign({}, stubHelpers, {
-    finality(chainId, headerHex, certHex) {
+    finality: throughCheck((chainId, genesis, headerHex, certHex) => {
+      if (genesis !== qstamp.NETWORKS.testnet.genesis) throw new Error('the certificate does not verify under this genesis');
       const bytes = Buffer.from(headerHex, 'hex');
       const header = F.decodeHeader(bytes);
       return JSON.stringify({ height: String(header.height), hash: sha3(bytes).toString('hex'), event_root: header.eventRoot.toString('hex'), time: String(header.time), signed_stake: '60', total_stake: '100' });
-    },
+    }),
   });
   const r = await verifyWith(pinned, receipt, opts, { helpers: lax });
   assert.strictEqual(r.status, 'unproven');
   assert.ok(r.notices.some((n) => /less than two thirds/.test(n)));
   const inflated = Object.assign({}, stubHelpers, {
-    finality(chainId, headerHex, certHex) {
+    finality: throughCheck((chainId, genesis, headerHex, certHex) => {
+      if (genesis !== qstamp.NETWORKS.testnet.genesis) throw new Error('the certificate does not verify under this genesis');
       const bytes = Buffer.from(headerHex, 'hex');
       const header = F.decodeHeader(bytes);
       return JSON.stringify({ height: String(header.height), hash: sha3(bytes).toString('hex'), event_root: header.eventRoot.toString('hex'), time: String(header.time), signed_stake: '60', total_stake: '90' });
-    },
+    }),
   });
   const shrunk = await verifyWith(pinned, receipt, opts, { helpers: inflated });
   assert.strictEqual(shrunk.status, 'unproven');
@@ -723,9 +733,8 @@ test('a finality proof served from a chain with another genesis refutes the rece
   const later = genesisNetwork(OTHER_GENESIS);
   const { record, receipt } = stampedFor(chain, later, 'a stamp made on one genesis for another');
   const r = await verifyWith(later, receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: stubHelpers });
-  assert.strictEqual(r.status, 'invalid');
+  assert.notStrictEqual(r.status, 'valid');
   assert.strictEqual(qstamp.isProven(r), false);
-  assert.match(r.checks.find((c) => c.name === 'finality').detail, /not the genesis .* that the receipt and this network name, and a finality certificate does not bind a genesis/);
   const fresh = genesisNetwork(OTHER_GENESIS, ROSTER.map((m) => Object.assign({}, m, { attest_pk: 'dd'.repeat(ML_DSA_65_PK_BYTES) })));
   const control = await verifyWith(fresh, receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: stubHelpers });
   assert.notStrictEqual(control.status, 'valid');
@@ -734,7 +743,7 @@ test('a finality proof served from a chain with another genesis refutes the rece
   const relabelled = JSON.parse(JSON.stringify(honest));
   relabelled.chain.genesis = OTHER_GENESIS;
   const moved = await verifyWith(later, relabelled, { bytes: Buffer.from('a stamp on its own genesis'), clients: only(chain), trustCustomEndpoints: true }, { helpers: stubHelpers });
-  assert.strictEqual(moved.status, 'invalid');
+  assert.notStrictEqual(moved.status, 'valid');
   assert.strictEqual(qstamp.isProven(moved), false);
 });
 
@@ -825,7 +834,6 @@ test('without a pinned checkpoint the genesis an endpoint names never ties its p
   const unpinned = { chainId: later.chainId, genesis: later.genesis, finality: { genesis: later.genesis, checkpoint: null, epochBlocks: 2 ** 40, rosters: { 0: ROSTER } } };
   const r = await F.proveAnchor({ net: unpinned, receipt, helpers: stubHelpers, sources });
   assert.notStrictEqual(r.state, 'proven');
-  assert.match(r.detail, /pins no checkpoint/);
   const held = await F.proveAnchor({ net: later, receipt, helpers: stubHelpers, sources });
   assert.notStrictEqual(held.state, 'proven');
 });
@@ -851,7 +859,7 @@ test('the proof helpers are detected on the client core under their published na
   assert.strictEqual(F.helpersComplete(F.helpersFrom({ core: { verifyFinality: f, verifyEvent: f, decodeEvent: f, chainIdFromName: f } })), false);
   const today = F.helpersFrom(qcore);
   assert.ok(F.helpersComplete(today));
-  assert.strictEqual(require('@quantovainc/qcore/package.json').version, '0.7.1');
+  assert.strictEqual(require('@quantovainc/qcore/package.json').version, '0.9.1');
   assert.strictEqual(String(qcore.core.chainIdFromName(qstamp.NETWORKS.testnet.chainId)), '6995079887857407393');
   assert.throws(() => qcore.core.chainIdFromName('Q-test-net-1'), /retired/);
   assert.strictEqual(require('@quantovainc/qcore/package.json').version, require('../package.json').dependencies['@quantovainc/qcore']);
@@ -948,4 +956,66 @@ test('plain http endpoints of a network are refused unless on loopback with allo
   await assert.rejects(reader('http://192.0.2.10:8645', () => false, entry.tls).nodeInfo(), (e) => e.reason === 'address refused');
   await assert.rejects(reader('http://192.0.2.10:8645', () => false, null).nodeInfo(), (e) => e.reason === 'plaintext http refused');
   assert.strictEqual(E.describe({ url: 'http://192.0.2.10:8645' }, testNetwork()).tls, null);
+});
+
+test('a twin chain under the same name and validator keys never proves a receipt, even with a replayed checkpoint and a false genesis claim', async () => {
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const twin = genesisNetwork(OTHER_GENESIS, ROSTER, { checkpoint: checkpointOf(OTHER_GENESIS) });
+  const { record, receipt } = stampedFor(chain, twin, 'a stamp on the twin chain presented for the pinned genesis');
+  const liar = only(chain, {
+    nodeInfo: (c) => ({ chain_id: c.chainId, genesis_hash: OTHER_GENESIS, head_height: c.height }),
+    finality: (c, h) => (Number(h) === 0 ? checkpointReply(c.epoch, c.chainId, OTHER_GENESIS) : c.finalityAt(Number(h))),
+  });
+  const r = await verifyWith(twin, receipt, { bytes: record, clients: liar, trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.notStrictEqual(r.status, 'valid');
+  assert.strictEqual(qstamp.isProven(r), false);
+  chain.certify = certificate([1, 2, 3], null, null, OTHER_GENESIS);
+  const bound = await verifyWith(twin, receipt, { bytes: record, clients: liar, trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.strictEqual(bound.status, 'valid');
+});
+
+test('finality helpers that do not bind certificates to the genesis are never used', async () => {
+  const real = F.helpersFrom(qcore);
+  assert.strictEqual(F.bindsGenesis(real), true);
+  const ignoresGenesis = Object.assign({}, real, { finality: (chainId, genesis, ...rest) => qcore.core.verifyFinality(chainId, CHECK.genesis, ...rest) });
+  assert.strictEqual(F.bindsGenesis(ignoresGenesis), false);
+  const oldShape = Object.assign({}, real, { finality: (chainId, headerHex, certHex, rosterJson) => qcore.core.verifyFinality(chainId, CHECK.genesis, headerHex, certHex, rosterJson) });
+  assert.strictEqual(F.bindsGenesis(oldShape), false);
+  assert.strictEqual(F.bindsGenesis({}), false);
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const record = Buffer.from('a proof through helpers that ignore the genesis');
+  const receipt = await stamped(chain, record);
+  const blind = Object.assign({}, stubHelpers, { finality: (chainId, genesis, headerHex, certHex, rosterJson) => (headerHex === CHECK.header ? realFinality(chainId, CHECK.genesis, headerHex, certHex, rosterJson) : stubHelpers.finality(chainId, genesis, headerHex, certHex, rosterJson)) });
+  const r = await verifyWith(pinned, receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: blind });
+  assert.notStrictEqual(r.status, 'valid');
+  assert.strictEqual(qstamp.isProven(r), false);
+  assert.ok(r.checks.concat(r.notices.map((n) => ({ detail: n }))).some((c) => /do not bind certificates to the genesis/.test(c.detail)));
+});
+
+test('substitute proof functions that pass the known certificate but do not bind the genesis on every call are never relied on', async () => {
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const record = Buffer.from('a receipt for substitute proof functions');
+  const receipt = await stamped(chain, record);
+  const opts = { bytes: record, clients: only(chain), trustCustomEndpoints: true };
+  const blindFinality = (chainId, genesis, headerHex, certHex, rosterJson) => stubHelpers.finality(chainId, qstamp.NETWORKS.testnet.genesis, headerHex, certHex, rosterJson);
+  const honestForCheck = Object.assign({}, stubHelpers, { finality: throughCheck(blindFinality) });
+  const onlyCheck = await verifyWith(pinned, receipt, opts, { helpers: honestForCheck });
+  assert.notStrictEqual(onlyCheck.status, 'valid');
+  assert.strictEqual(qstamp.isProven(onlyCheck), false);
+  let calls = 0;
+  const honestAtFirst = Object.assign({}, stubHelpers, { finality: (...args) => (++calls <= 2 ? stubHelpers.finality(...args) : blindFinality(...args)) });
+  const firstCalls = await verifyWith(pinned, receipt, opts, { helpers: honestAtFirst });
+  assert.strictEqual(qstamp.isProven(firstCalls), false);
+  const swapped = Object.assign({}, stubHelpers);
+  const pending = verifyWith(pinned, receipt, opts, { helpers: swapped });
+  swapped.finality = throughCheck(blindFinality);
+  const during = await pending;
+  assert.strictEqual(qstamp.isProven(during), false);
+  const alwaysIncluded = Object.assign({}, stubHelpers, { event: () => true });
+  const broken = only(chain, { eventProof: (c, h, i) => Object.assign(c.eventProofAt(Number(h), Number(i)), { steps: [{ sibling: '22'.repeat(32), left: true }], event_count: 2 }) });
+  const lied = await verifyWith(pinned, receipt, { bytes: record, clients: broken, trustCustomEndpoints: true }, { helpers: alwaysIncluded });
+  assert.strictEqual(qstamp.isProven(lied), false);
 });

@@ -25,7 +25,7 @@ function pinnedFor(roster) {
 }
 
 function finalityOf(s, block) {
-  return JSON.parse(helpers.finality(BigInt(V.chain.id), block.header_bytes, block.certificate, JSON.stringify(V.rosters[s.roster])));
+  return JSON.parse(helpers.finality(BigInt(V.chain.id), V.chain.genesis, block.header_bytes, block.certificate, JSON.stringify(V.rosters[s.roster])));
 }
 
 function serve(s, over) {
@@ -179,8 +179,8 @@ test('the vectors pin the testnet chain and well formed rosters', () => {
   assert.strictEqual(V.chain.contract, qstamp.NETWORKS.testnet.contract);
   assert.strictEqual(String(helpers.chainId(V.chain.name)), V.chain.id);
   assert.strictEqual(V.epoch, Math.floor(V.height / V.epoch_blocks));
-  assert.deepStrictEqual(V.source['Quantova-Chain'], '6f8ffb8c6eb52fbba6e0787c4807ecea02e7c74e');
-  assert.deepStrictEqual(V.source['QRC-CONSENSUS'], 'c3e731c8e7b371cddd9795b8a8f5261f4a46762b');
+  assert.deepStrictEqual(V.source['Quantova-Chain'], '2bc396ad5dd0bc9f57670b0c8f4b5786c9824325');
+  assert.deepStrictEqual(V.source['QRC-CONSENSUS'], '9a4337fe0945609d21c0b8b12b1c41816cfc57ae');
   assert.deepStrictEqual(V.source['Q-Crypto'], 'e47d6cd94e71c13b22e2990f8c2b0a2e3a2204d0');
   assert.deepStrictEqual(Object.keys(V.rosters).sort(), ['four', 'three']);
   assert.strictEqual(V.rosters.four.length, 4);
@@ -229,6 +229,7 @@ test('the vectors verify directly with the client core helpers', () => {
     e_keys_outside_roster: /signature does not verify/,
     e_ids_outside_roster: /validator outside the roster/,
     f_other_chain_id: /signature does not verify/,
+    k_other_genesis: /signature does not verify/,
   };
   assert.deepStrictEqual(Object.keys(accepted).concat(Object.keys(refused)).sort(), Object.keys(S).sort());
   for (const [name, s] of Object.entries(S)) {
@@ -243,7 +244,7 @@ test('the vectors verify directly with the client core helpers', () => {
         assert.strictEqual(String(f.transaction_root).toLowerCase(), b.transaction.transaction_root, name);
         assert.strictEqual(String(f.time), String(header.time), name);
       } else {
-        assert.throws(() => helpers.finality(BigInt(V.chain.id), b.header_bytes, b.certificate, JSON.stringify(V.rosters[s.roster])), refused[name], name);
+        assert.throws(() => helpers.finality(BigInt(V.chain.id), V.chain.genesis, b.header_bytes, b.certificate, JSON.stringify(V.rosters[s.roster])), refused[name], name);
       }
       assert.strictEqual(b.event_root, header.eventRoot.toString('hex'), name);
       assert.strictEqual(b.steps.length, F.pathLength(b.event_count, b.index), name);
@@ -262,8 +263,12 @@ test('the vectors verify directly with the client core helpers', () => {
     }
   }
   const other = BigInt(S.f_other_chain_id.sign_chain_id);
-  const f = JSON.parse(helpers.finality(other, S.f_other_chain_id.blocks[0].header_bytes, S.f_other_chain_id.blocks[0].certificate, JSON.stringify(V.rosters.four)));
+  const f = JSON.parse(helpers.finality(other, V.chain.genesis, S.f_other_chain_id.blocks[0].header_bytes, S.f_other_chain_id.blocks[0].certificate, JSON.stringify(V.rosters.four)));
   assert.strictEqual(String(f.signed_stake), '8000');
+  const twin = S.k_other_genesis;
+  assert.notStrictEqual(twin.sign_genesis, V.chain.genesis);
+  const k = JSON.parse(helpers.finality(BigInt(V.chain.id), twin.sign_genesis, twin.blocks[0].header_bytes, twin.blocks[0].certificate, JSON.stringify(V.rosters.four)));
+  assert.strictEqual(String(k.signed_stake), '8000');
   assert.strictEqual(helpers.event(S.a_all_sign.blocks[0].event_root, S.a_all_sign.blocks[0].leaf, JSON.stringify(S.a_all_sign.blocks[0].steps.map((st) => Object.assign({}, st, { left: !st.left })))), false);
   assert.strictEqual(JSON.parse(helpers.decode(S.i_other_contract.blocks[0].leaf)).contract === V.chain.contract, false);
   assert.strictEqual(String(JSON.parse(helpers.decode(S.i_other_selector.blocks[0].leaf)).selector).toLowerCase(), wire.COMMITMENT_STAMPED_SELECTOR);
@@ -389,7 +394,7 @@ test('a gateway without transaction proofs falls back to endpoints confirming th
 });
 
 test('certificates below two thirds, from keys or ids outside the roster or for another chain id never prove a receipt', async () => {
-  for (const name of ['d_below_two_thirds', 'e_keys_outside_roster', 'e_ids_outside_roster', 'f_other_chain_id']) {
+  for (const name of ['d_below_two_thirds', 'e_keys_outside_roster', 'e_ids_outside_roster', 'f_other_chain_id', 'k_other_genesis']) {
     const r = await check(S[name], [{}, {}]);
     assert.notStrictEqual(r.status, 'valid', name);
     assert.strictEqual(r.status, 'unproven', name);
@@ -498,7 +503,7 @@ test('a roster with a wrong root or a certificate with a tampered credential nev
     ['a root of fewer slots', at(3, { root_slots: '1' })],
   ];
   for (const [what, wrong] of rosters) {
-    assert.throws(() => helpers.finality(BigInt(V.chain.id), block.header_bytes, block.certificate, JSON.stringify(wrong)), /does not prove its committee membership/, what);
+    assert.throws(() => helpers.finality(BigInt(V.chain.id), V.chain.genesis, block.header_bytes, block.certificate, JSON.stringify(wrong)), /does not prove its committee membership/, what);
     const r = await check(s, [{}, {}], null, wrong);
     assert.notStrictEqual(r.status, 'valid', what);
     assert.strictEqual(qstamp.isProven(r), false, what);
@@ -510,7 +515,7 @@ test('a roster with a wrong root or a certificate with a tampered credential nev
       delete copy[key];
       return copy;
     });
-    assert.throws(() => helpers.finality(BigInt(V.chain.id), block.header_bytes, block.certificate, JSON.stringify(missing)), /sortition root|root_slots/, key);
+    assert.throws(() => helpers.finality(BigInt(V.chain.id), V.chain.genesis, block.header_bytes, block.certificate, JSON.stringify(missing)), /sortition root|root_slots/, key);
     const r = await check(s, [{}, {}], null, missing);
     assert.strictEqual(r.status, 'indeterminate', key);
     assert.strictEqual(qstamp.isProven(r), false, key);

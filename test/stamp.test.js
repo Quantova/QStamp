@@ -231,3 +231,12 @@ test('verify stops hashing a file at the deadline or on the signal and reports i
   assert.match(late.checks.find((c) => c.name === 'content').detail, /deadline/);
   assert.ok(Date.now() - started < 2000, 'took ' + (Date.now() - started) + ' ms');
 });
+
+test('a stamp is never signed through a gateway that names a genesis other than the pinned one', async (t) => {
+  const chain = makeChain();
+  const liar = await gateway(chain, { nodeInfo: (c) => ({ chain_id: c.chainId, genesis_hash: 'cd'.repeat(32), head_height: c.height }) });
+  t.after(() => liar.close());
+  const before = chain.submitted;
+  await assert.rejects(qstamp.stamp(options(chain, { clients: undefined, rpc: liar.url, allowLoopback: true, trustSingleEndpoint: true })), /does not serve the testnet chain/);
+  assert.strictEqual(chain.submitted, before);
+});
