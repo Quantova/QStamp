@@ -270,7 +270,7 @@ function makeChain(opts) {
 function api(chain, ov) {
   const o = ov || {};
   return {
-    nodeInfo: async () => (o.nodeInfo ? o.nodeInfo(chain) : { chain_id: chain.chainId, genesis_hash: chain.genesis, head_height: chain.height }),
+    nodeInfo: async () => (o.nodeInfo ? o.nodeInfo(chain) : { chain_id: chain.chainId, genesis_hash: chain.genesis, head_height: chain.height, protocol: core.gatewayProtocol() }),
     block: async (h) => {
       if (o.block) return o.block(chain, h);
       const b = chain.blocks.get(Number(h));

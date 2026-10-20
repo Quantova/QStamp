@@ -94,7 +94,7 @@ test('text from the client core or an endpoint never reaches the error message',
       res.writeHead(200, { 'content-type': 'application/json' });
       if (method === 'node_info') {
         asked += 1;
-        res.end(JSON.stringify({ chain_id: asked === 1 ? net.chainId : evil, genesis_hash: net.genesis, head_height: 100, fee: { transfer_quon: '10' } }));
+        res.end(JSON.stringify({ chain_id: asked === 1 ? net.chainId : evil, genesis_hash: net.genesis, head_height: 100, fee: { transfer_quon: '10' }, protocol: require('@quantovainc/qcore').core.gatewayProtocol() }));
         return;
       }
       res.end('{}');
@@ -234,7 +234,7 @@ test('verify stops hashing a file at the deadline or on the signal and reports i
 
 test('a stamp is never signed through a gateway that names a genesis other than the pinned one', async (t) => {
   const chain = makeChain();
-  const liar = await gateway(chain, { nodeInfo: (c) => ({ chain_id: c.chainId, genesis_hash: 'cd'.repeat(32), head_height: c.height }) });
+  const liar = await gateway(chain, { nodeInfo: (c) => ({ chain_id: c.chainId, genesis_hash: 'cd'.repeat(32), head_height: c.height, protocol: require('@quantovainc/qcore').core.gatewayProtocol() }) });
   t.after(() => liar.close());
   const before = chain.submitted;
   await assert.rejects(qstamp.stamp(options(chain, { clients: undefined, rpc: liar.url, allowLoopback: true, trustSingleEndpoint: true })), /does not serve the testnet chain/);

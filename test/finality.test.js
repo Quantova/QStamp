@@ -859,7 +859,7 @@ test('the proof helpers are detected on the client core under their published na
   assert.strictEqual(F.helpersComplete(F.helpersFrom({ core: { verifyFinality: f, verifyEvent: f, decodeEvent: f, chainIdFromName: f } })), false);
   const today = F.helpersFrom(qcore);
   assert.ok(F.helpersComplete(today));
-  assert.strictEqual(require('@quantovainc/qcore/package.json').version, '0.9.1');
+  assert.strictEqual(require('@quantovainc/qcore/package.json').version, '0.9.5');
   assert.strictEqual(String(qcore.core.chainIdFromName(qstamp.NETWORKS.testnet.chainId)), '6995079887857407393');
   assert.throws(() => qcore.core.chainIdFromName('Q-test-net-1'), /retired/);
   assert.strictEqual(require('@quantovainc/qcore/package.json').version, require('../package.json').dependencies['@quantovainc/qcore']);
