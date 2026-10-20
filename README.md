@@ -129,7 +129,7 @@ qstamp hash report.pdf ledger.csv
 Stamp one or more files in a single transaction. The key file holds a 32 byte seed as 64 hexadecimal characters and must be readable only by its owner.
 
 ```
-qstamp stamp report.pdf ledger.csv --seed-file ./signer.key --index 0 --kind financial_record --rpc https://rpc-testnet.quantova.org --rpc https://rpc.example.org
+qstamp stamp report.pdf ledger.csv --seed-file ./signer.key --index 0 --kind financial_record --rpc https://q-test-net-01.quantova.org --rpc https://rpc.example.org
 ```
 
 Each file receives a receipt named after it with the suffix `.qstamp.json`. Every receipt file is reserved before anything is signed, so a stamp is never paid for without a place to record it. Two inputs that would share one receipt name are refused, and receipts are never written through a symbolic link. Every receipt and pending file is written to a new private file and then moved into place, so an existing receipt replaced with `--force` stays intact until its replacement is complete. The `complete` command writes only files whose names end in `.qstamp.json` and never replaces an existing receipt unless `--force` is given.
@@ -165,7 +165,7 @@ The command exits with status 0 when the receipt is valid, 1 when it is invalid,
 const qstamp = require('@quantovainc/qstamp');
 
 const digest = await qstamp.digestFile('report.pdf');
-const clients = ['https://rpc-testnet.quantova.org', 'https://rpc.example.org'];
+const clients = ['https://q-test-net-01.quantova.org', 'https://rpc.example.org'];
 const [receipt] = await qstamp.stamp({
   seed,
   index: 0,
@@ -217,7 +217,7 @@ An auditor can verify a receipt without this SDK by following these steps.
 
 ## Network
 
-The Quantova test network is identified by the chain name `Q-test-net-01`, whose numeric chain id, the first eight bytes of the SHA3 hash of the name read big endian, is 6995079887857407393. The public endpoint is `https://rpc-testnet.quantova.org`, operated by Quantova Inc. The network is being relaunched under this name, and the genesis hash `ca91e093bb8de33e90db52d7c89876597d14760703793ea7211929e73e613062`, the genesis time and the contract `Q1D6TZFRL203P3DFAFVUPZUHGUCM4EWGH6063XNS42VA5235RNQWXS7FXEWX` held in `lib/networks.js` are those of the network before the relaunch. They stay in place only until the relaunched network publishes its own genesis and contract, they do not describe a live network, and a receipt made on the relaunched network verifies only with a release that pins its genesis.
+The Quantova test network is identified by the chain name `Q-test-net-01`, whose numeric chain id, the first eight bytes of the SHA3 hash of the name read big endian, is 6995079887857407393. The public endpoint is `https://q-test-net-01.quantova.org`, operated by Quantova Inc. The network is being relaunched under this name, and the genesis hash `ca91e093bb8de33e90db52d7c89876597d14760703793ea7211929e73e613062`, the genesis time and the contract `Q1D6TZFRL203P3DFAFVUPZUHGUCM4EWGH6063XNS42VA5235RNQWXS7FXEWX` held in `lib/networks.js` are those of the network before the relaunch. They stay in place only until the relaunched network publishes its own genesis and contract, they do not describe a live network, and a receipt made on the relaunched network verifies only with a release that pins its genesis.
 
 Each network in `lib/networks.js` lists its official endpoints in `rpcs`, each with the url and the name of the operator that runs it. A second endpoint run by an independent operator is added as a further entry in that list, and verification then reaches the status valid through an official quorum. The validator rosters used for finality proofs are pinned per epoch in the `finality.rosters` entry of the same file, which is empty until a roster is published. `finality.genesis` names the genesis those rosters belong to and must equal the genesis of the network, and `finality.checkpoint` may give the height and header hash of a certified block of that chain. Each validator in a pinned roster names its `id`, `stake`, `attest_pk`, `root` and `root_slots` exactly as `get_validator_set` serves them, and a roster that leaves out the sortition root or its slot count is refused. `finality.epochBlocks` fixes the epoch length once it is final. Once a roster is pinned the network accepts an anchor only through a finality proof.
 
