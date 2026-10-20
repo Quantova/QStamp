@@ -240,3 +240,18 @@ test('a stamp is never signed through a gateway that names a genesis other than 
   await assert.rejects(qstamp.stamp(options(chain, { clients: undefined, rpc: liar.url, allowLoopback: true, trustSingleEndpoint: true })), /does not serve the testnet chain/);
   assert.strictEqual(chain.submitted, before);
 });
+
+test('every stamping failure carries its stable error code', async () => {
+  const { makeChain: mk, client: cl, SEED: seed } = require('./chain');
+  const records = (x) => [{ digest: qstamp.digestBytes(Buffer.from(x)) }];
+  await assert.rejects(qstamp.digestFile(require('path').join(__dirname, 'no such file')), (e) => e.code === 'QSTAMP_FILE');
+  const lost = mk();
+  const flaky = (c, url) => cl(c, url, { call: () => { const e = new Error('socket hang up'); e.code = 'ECONNRESET'; throw e; } });
+  await assert.rejects(qstamp.stamp({ seed, index: 0, records: records('a'), kind: 'document', clients: [flaky(lost, 'https://alpha.example'), flaky(lost, 'https://beta.example')], timeoutMs: 1000 }), (e) => e.code === 'QSTAMP_UNCONFIRMED' && !!e.pending);
+  const silent = mk();
+  const quiet = (url) => cl(silent, url, { events: () => ({ events: [] }) });
+  await assert.rejects(qstamp.stamp({ seed, index: 0, records: records('b'), kind: 'document', clients: [quiet('https://alpha.example'), quiet('https://beta.example')], timeoutMs: 1000 }), (e) => e.code === 'QSTAMP_NOT_RECORDED' && !!e.pending);
+  const split = mk();
+  const later = cl(split, 'https://beta.example', { block: (c, h) => { const b = c.blocks.get(Number(h)); return b ? Object.assign({}, b, { time: b.time + 1 }) : null; } });
+  await assert.rejects(qstamp.stamp({ seed, index: 0, records: records('c'), kind: 'document', clients: [cl(split, 'https://alpha.example'), later], timeoutMs: 1000 }), (e) => e.code === 'QSTAMP_DISAGREEMENT' && !!e.pending);
+});

@@ -20,6 +20,7 @@ env:
 
 jobs:
   verify:
+    name: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -35,9 +36,12 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24
-      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
-        with:
-          toolchain: "1.98.0"
+          package-manager-cache: false
+      - name: rust toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.0 --profile minimal
+          rustup default 1.98.0
       - name: the tag must name the version being published
         run: |
           set -euo pipefail
@@ -70,6 +74,7 @@ jobs:
         run: bash scripts/build-contract.sh
 
   publish:
+    name: publish
     needs: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -85,6 +90,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24
+          package-manager-cache: false
       - name: the tagged commit must be on main and the tag must name the package version
         run: |
           set -euo pipefail
@@ -156,9 +162,27 @@ jobs:
           if (!src || src.digest.gitCommit !== sha) throw new Error('built from commit ' + (src && src.digest.gitCommit) + ', not ' + sha);
           console.log('provenance binds ' + st.subject[0].name + ' to ' + repo + ' ' + ref + ' at ' + sha);
           JS
-          check="$RUNNER_TEMP/signatures"
-          mkdir -p "$check"
-          cd "$check"
-          npm init -y >/dev/null
-          npm install --ignore-scripts --no-audit --no-fund --legacy-peer-deps "$PKG@$V" >/dev/null
-          npm audit signatures
+
+  sbom:
+    name: sbom
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: the SBOM of the release
+        run: npm sbom --package-lock-only --omit dev --sbom-format cyclonedx > "$RUNNER_TEMP/sbom.cdx.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: sbom
+          if-no-files-found: error
+          retention-days: 90
+          path: ${{ runner.temp }}/sbom.cdx.json

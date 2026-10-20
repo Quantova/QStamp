@@ -22,10 +22,12 @@ env:
 
 jobs:
   test:
-    runs-on: ubuntu-24.04
+    name: test
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
       matrix:
+        os: [ubuntu-24.04, macos-15]
         node: [20, 22, 24]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -34,6 +36,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ matrix.node }}
+          package-manager-cache: false
       - name: install
         run: npm ci --ignore-scripts
       - name: lint
@@ -44,6 +47,7 @@ jobs:
         run: npm audit --audit-level=low
 
   contract:
+    name: contract
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -63,15 +67,18 @@ jobs:
           if [ "$have" != "$TEMPLATES_COMMIT" ]; then
             echo "the templates are at $have, the pinned commit is $TEMPLATES_COMMIT" >&2; exit 1
           fi
-      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c
-        with:
-          toolchain: "1.98.0"
+      - name: rust toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.0 --profile minimal
+          rustup default 1.98.0
       - name: rebuild the contract container and the issuer and council template interfaces from source
         env:
           QSTAMP_TEMPLATES_DIR: ${{ github.workspace }}/templates
         run: bash scripts/build-contract.sh
 
   secrets:
+    name: secrets
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

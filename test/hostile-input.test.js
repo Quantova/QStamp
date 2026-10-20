@@ -47,3 +47,56 @@ test('hostile input to every offline function is refused in a controlled way and
     assert.strictEqual(Object.prototype.statement, undefined);
   }
 });
+
+test('a file that changes while it is hashed is refused', { skip: process.platform === 'win32' }, async () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'change-'));
+  try {
+    const doc = path.join(dir, 'doc.bin');
+    fs.writeFileSync(doc, Buffer.alloc(4 * 1024 * 1024, 7));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const pending = q.digestFile(doc);
+    const fd = fs.openSync(doc, 'r+');
+    fs.writeSync(fd, Buffer.from('Z'), 0, 1, 0);
+    fs.closeSync(fd);
+    await assert.rejects(pending, /changed while it was read/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('options inherited from a polluted Object.prototype are ignored by verify and stamp', async () => {
+  const { makeChain, client, SEED } = require('./chain');
+  const chain = makeChain();
+  const clients = () => [client(chain, 'https://alpha.example'), client(chain, 'https://beta.example')];
+  const [receipt] = await q.stamp({ seed: SEED, index: 0, records: [{ digest: q.digestBytes(Buffer.from('a')) }], kind: 'document', clients: clients(), timeoutMs: 1000 });
+  const before = await q.verify(receipt, { bytes: Buffer.from('a'), clients: clients() });
+  let leaked = 0;
+  Object.prototype.trustCustomEndpoints = true;
+  Object.prototype.onPending = () => {
+    leaked += 1;
+  };
+  Object.prototype.until = 1;
+  try {
+    const after = await q.verify(receipt, { bytes: Buffer.from('a'), clients: clients() });
+    assert.strictEqual(after.status, before.status);
+    assert.strictEqual(after.trust, before.trust);
+    await q.stamp({ seed: SEED, index: 0, records: [{ digest: q.digestBytes(Buffer.from('b')) }], kind: 'document', clients: clients(), timeoutMs: 1000 });
+    assert.strictEqual(leaked, 0);
+  } finally {
+    delete Object.prototype.trustCustomEndpoints;
+    delete Object.prototype.onPending;
+    delete Object.prototype.until;
+  }
+});
+
+test('verify refuses a huge or non object receipt quickly', async () => {
+  for (const input of [Buffer.alloc(50 * 1024 * 1024), new Array(1000000).fill('x'), { format: 'A'.repeat(200000) }]) {
+    const started = Date.now();
+    const r = await q.verify(input, { bytes: Buffer.from('x') });
+    assert.strictEqual(r.status, 'invalid');
+    assert.ok(Date.now() - started < 3000, 'took ' + (Date.now() - started) + ' ms');
+  }
+});

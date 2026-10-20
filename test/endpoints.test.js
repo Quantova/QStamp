@@ -407,3 +407,18 @@ test('the chain time floors of official endpoint sets are never pushed out by ot
   assert.strictEqual(E.floorGet(net.genesis + '\ncustom 0', false), undefined);
   assert.ok(E.OFFICIAL_FLOOR_LIMIT > 0 && E.OFFICIAL_FLOOR_LIMIT <= E.FLOOR_LIMIT);
 });
+
+test('a name lookup that never answers cannot hold verification past its deadline', async () => {
+  const chain = makeChain();
+  const [receipt] = await qstamp.stamp({ seed: SEED, index: 0, records: [{ digest: qstamp.digestBytes(Buffer.from('slow name')) }], kind: 'document', clients: [client(chain, 'https://alpha.example'), client(chain, 'https://beta.example')], timeoutMs: 1000 });
+  const real = dns.lookup;
+  dns.lookup = () => {};
+  try {
+    const started = Date.now();
+    const r = await qstamp.verify(receipt, { bytes: Buffer.from('slow name'), deadlineMs: 400 });
+    assert.notStrictEqual(r.status, 'valid');
+    assert.ok(Date.now() - started < 1500, 'verification took ' + (Date.now() - started) + ' ms');
+  } finally {
+    dns.lookup = real;
+  }
+});

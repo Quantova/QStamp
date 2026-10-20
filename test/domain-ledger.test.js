@@ -269,3 +269,22 @@ test('the domain ledger refuses to run on Windows where folder owners and modes 
     Object.defineProperty(process, 'platform', was);
   }
 });
+
+test('domain ledger refusals never repeat control or direction characters from the path', { skip: process.platform === 'win32' }, () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'domain-'));
+  try {
+    const dir = path.join(base, 'led\u001b[31mger\u202e');
+    fs.mkdirSync(dir, { mode: 0o700 });
+    fs.chmodSync(dir, 0o700);
+    fs.writeFileSync(path.join(dir, '.d.json.lock'), '', { mode: 0o600 });
+    assert.throws(() => qstamp.recordDomain(path.join(dir, 'd.json'), { contract, genesis, domain: '7' }), (e) => /another command is recording/.test(e.message) && !/[\u0000-\u001f\u202a-\u202e]/u.test(e.message));
+    const locked = path.join(dir, 'e\u001b]0;x\u0007.json');
+    fs.writeFileSync(locked, '{}', { mode: 0 });
+    fs.chmodSync(locked, 0);
+    if (typeof process.getuid === 'function' && process.getuid() !== 0) {
+      assert.throws(() => qstamp.recordDomain(locked, { contract, genesis, domain: '7' }), (e) => /could not be opened/.test(e.message) && !/[\u0000-\u001f\u202a-\u202e]/u.test(e.message));
+    }
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
