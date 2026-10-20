@@ -135,7 +135,7 @@ jobs:
           set -euo pipefail
           V=$(node -p "require('./package.json').version")
           url=""
-          for _ in $(seq 1 30); do
+          for _ in $(seq 1 120); do
             url=$(npm view "$PKG@$V" dist.attestations.url 2>/dev/null || true)
             [ -n "$url" ] && break
             sleep 10
