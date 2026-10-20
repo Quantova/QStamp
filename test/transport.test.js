@@ -56,9 +56,12 @@ function pki() {
   };
   try {
     fs.writeFileSync(path.join(dir, 'ext.cnf'), 'subjectAltName=IP:127.0.0.1\nbasicConstraints=CA:FALSE\n');
-    run(['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes', '-keyout', 'ca.key', '-out', 'ca.pem', '-days', '2', '-subj', '/CN=qstamp test ca']);
-    run(['req', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes', '-keyout', 'srv.key', '-out', 'srv.csr', '-subj', '/CN=127.0.0.1']);
-    run(['x509', '-req', '-in', 'srv.csr', '-CA', 'ca.pem', '-CAkey', 'ca.key', '-CAcreateserial', '-out', 'srv.pem', '-days', '2', '-extfile', 'ext.cnf']);
+    fs.writeFileSync(path.join(dir, 'ca.cnf'), '[req]\ndistinguished_name = dn\nx509_extensions = v3_ca\nprompt = no\n[dn]\nCN = qstamp test ca\n[v3_ca]\nbasicConstraints = critical,CA:TRUE\nkeyUsage = critical,keyCertSign,cRLSign\nsubjectKeyIdentifier = hash\n');
+    run(['ecparam', '-name', 'prime256v1', '-genkey', '-noout', '-out', 'ca.key']);
+    run(['ecparam', '-name', 'prime256v1', '-genkey', '-noout', '-out', 'srv.key']);
+    run(['req', '-new', '-x509', '-config', 'ca.cnf', '-key', 'ca.key', '-out', 'ca.pem', '-days', '2', '-sha256']);
+    run(['req', '-new', '-key', 'srv.key', '-out', 'srv.csr', '-subj', '/CN=127.0.0.1']);
+    run(['x509', '-req', '-in', 'srv.csr', '-CA', 'ca.pem', '-CAkey', 'ca.key', '-CAcreateserial', '-out', 'srv.pem', '-days', '2', '-sha256', '-extfile', 'ext.cnf']);
     return {
       ca: fs.readFileSync(path.join(dir, 'ca.pem')),
       key: fs.readFileSync(path.join(dir, 'srv.key')),
