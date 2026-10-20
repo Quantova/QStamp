@@ -119,18 +119,20 @@ test('text from the client core or an endpoint never reaches the error message',
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function slowFinality(chain, settleMs) {
-  const finalNonce = new Map();
+  const settled = new Map();
   const finalAt = new Map();
   const signed = [];
   const wrap = (base) => {
     const c = client(chain, base);
     c.call = async (seed, index, to, argsHex) => {
       const from = core.address(seed, index);
-      const nonce = finalNonce.get(from) || 0;
+      const now = Date.now();
+      const times = settled.get(from) || [];
+      const nonce = times.filter((at) => at <= now).length;
       signed.push(nonce);
       const txId = chain.submitCall(from, to, argsHex);
-      finalAt.set(txId, Date.now() + settleMs);
-      setTimeout(() => finalNonce.set(from, nonce + 1), settleMs);
+      finalAt.set(txId, now + settleMs);
+      settled.set(from, times.concat(now + settleMs));
       return { outcome: { verdict: 'accepted', tx_id: txId } };
     };
     const inner = c.transaction;
