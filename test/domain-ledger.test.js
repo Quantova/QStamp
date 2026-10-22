@@ -93,12 +93,14 @@ test('a ledger folder below a folder others can change is refused', (t) => {
   const shared = path.join(dir, 'shared');
   const inner = path.join(shared, 'inner');
   fs.mkdirSync(inner, { recursive: true });
+  fs.chmodSync(inner, 0o700);
   fs.chmodSync(shared, 0o777);
   assert.throws(() => D.recordDomain(path.join(inner, 'domains.json'), { contract, genesis }), /above the domain ledger can be changed/);
   fs.chmodSync(shared, 0o700);
   const link = path.join(dir, 'via');
   const sharedTwo = path.join(dir, 'shared2');
   fs.mkdirSync(path.join(sharedTwo, 'inner'), { recursive: true });
+  fs.chmodSync(path.join(sharedTwo, 'inner'), 0o700);
   fs.chmodSync(sharedTwo, 0o777);
   fs.symlinkSync(path.join(sharedTwo, 'inner'), link);
   assert.throws(() => D.recordDomain(path.join(link, 'domains.json'), { contract, genesis }), /above the domain ledger can be changed/);

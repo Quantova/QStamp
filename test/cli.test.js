@@ -187,7 +187,8 @@ test('a deployment domain is a fresh non zero 64 bit number and a ledger refuses
   }
   assert.throws(() => qstamp.recordDomain(ledger, { contract: 'not an address', genesis }), /not a Quantova address/);
   assert.throws(() => qstamp.recordDomain(ledger, { contract, genesis: 'AB'.repeat(32) }), /64 lowercase hexadecimal/);
-  fs.writeFileSync(path.join(dir, 'bad.json'), '{"format":"other","deployments":[]}');
+  fs.writeFileSync(path.join(dir, 'bad.json'), '{"format":"other","deployments":[]}', { mode: 0o600 });
+  fs.chmodSync(path.join(dir, 'bad.json'), 0o600);
   assert.throws(() => qstamp.recordDomain(path.join(dir, 'bad.json'), { contract, genesis }), /is not a qstamp-deployment-domains\/1 file/);
 
   const printed = await run(['domain']);
