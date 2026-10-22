@@ -380,6 +380,11 @@ test('a custom contract receipt cannot be valid when the withdrawal state cannot
   const r = await qstamp.verify(receipt, { bytes: record, contract, trustCustomContract: true, clients: [client(chain, 'https://alpha.example', { noState: true })], trustCustomEndpoints: true });
   assert.strictEqual(r.status, 'indeterminate');
   assert.ok(r.checks.find((c) => c.name === 'revocation' && c.transport));
+  const stripped = Object.assign(client(chain, 'https://alpha.example'), { storageAt: async () => ({ slots: [] }) });
+  const missing = await qstamp.verify(receipt, { bytes: record, contract, trustCustomContract: true, clients: [stripped], trustCustomEndpoints: true });
+  assert.strictEqual(missing.status, 'indeterminate');
+  assert.strictEqual(missing.revoked, null);
+  assert.match(missing.checks.find((c) => c.name === 'revocation').detail, /did not report the withdrawal slot/);
 });
 
 test('a fabricated anchor never verifies valid through any combination of options', async () => {

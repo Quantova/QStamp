@@ -286,7 +286,7 @@ function api(chain, ov) {
       return t ? Object.assign({}, t) : { status: 'unknown' };
     },
     storageAt: async (contract, keys) => ({
-      slots: keys.filter((k) => chain.storage.has(contract + '/' + k)).map((k) => ({ slot: k, value: chain.storage.get(contract + '/' + k) })),
+      slots: keys.map((k) => ({ slot: k, value: chain.storage.has(contract + '/' + k) ? chain.storage.get(contract + '/' + k) : '0' })),
     }),
     finality: async (h) => (o.finality ? o.finality(chain, h) : chain.finalityAt(Number(h))),
     eventProof: async (h, i) => (o.eventProof ? o.eventProof(chain, h, i) : chain.eventProofAt(Number(h), Number(i))),
