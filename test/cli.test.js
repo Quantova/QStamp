@@ -66,6 +66,41 @@ test('the command line marks a receipt confirmed only by chosen endpoints as unp
   assert.strictEqual(parsed.trust, 'custom-endpoints');
 });
 
+test('complete writes receipts only next to its pending file', { skip: process.platform === 'win32' }, async (t) => {
+  const chain = makeChain();
+  let pending = null;
+  await qstamp.stamp({
+    seed: SEED,
+    index: 0,
+    records: [{ digest: qstamp.digestBytes(Buffer.from('a pending cli record')) }],
+    clients: [client(chain, 'https://alpha.example'), client(chain, 'https://beta.example')],
+    timeoutMs: 1000,
+    onPending: (p) => { pending = JSON.parse(JSON.stringify(p)); },
+  });
+  const gw = await gateway(chain);
+  t.after(() => gw.close());
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qstamp-complete-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const home = path.join(root, 'work');
+  const away = path.join(root, 'away');
+  fs.mkdirSync(home, { mode: 0o700 });
+  fs.mkdirSync(away, { mode: 0o700 });
+  fs.symlinkSync(away, path.join(home, 'link'));
+  const file = path.join(home, 'qstamp-pending-1.json');
+  const attempt = (out) => {
+    fs.writeFileSync(file, JSON.stringify({ format: 'qstamp-cli-pending/1', outputs: [out], records: pending.records, pending }), { mode: 0o600 });
+    return run(['complete', file, '--rpc', gw.url, '--trust-single-endpoint', '--allow-loopback']);
+  };
+  for (const out of [path.join(away, 'a.qstamp.json'), home + '/../away/b.qstamp.json', path.join(home, 'link', 'c.qstamp.json')]) {
+    const r = await attempt(out);
+    assert.strictEqual(r.code, 64, r.stderr);
+    assert.deepStrictEqual(fs.readdirSync(away), []);
+  }
+  const ok = await attempt(path.join(home, 'r.qstamp.json'));
+  assert.strictEqual(ok.code, 0, ok.stderr);
+  assert.ok(fs.existsSync(path.join(home, 'r.qstamp.json')));
+});
+
 test('the command line refuses an option it does not know', async () => {
   const r = await run(['verify', 'x.json', '--trust-everything']);
   assert.strictEqual(r.code, 64);

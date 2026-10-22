@@ -139,6 +139,14 @@ function readSeed(file) {
   }
 }
 
+function realFolder(dir) {
+  try {
+    return fs.realpathSync(dir);
+  } catch (e) {
+    return null;
+  }
+}
+
 function wholeNumber(value, name) {
   if (!/^(0|[1-9][0-9]{0,15})$/.test(String(value))) throw usageError('--' + name + ' must be a whole number');
   const n = Number(value);
@@ -310,6 +318,12 @@ async function cmdStamp(positional, flags) {
   const outDir = flags.out;
   const outputs = positional.map((file) => path.resolve(outDir || path.dirname(file), path.basename(file) + RECEIPT_SUFFIX));
   if (new Set(outputs).size !== outputs.length) throw usageError('two inputs would share one receipt name, stamp them separately or use --out');
+  if (!outDir) {
+    const home = realFolder(path.dirname(path.resolve(positional[0])));
+    if (positional.some((file) => realFolder(path.dirname(path.resolve(file))) !== home)) {
+      throw usageError('the files lie in different folders, stamp the files of each folder separately or use --out so that the receipts and the pending file share one folder');
+    }
+  }
   const records = [];
   if (!Object.prototype.hasOwnProperty.call(qstamp.ALGORITHMS, alg)) throw usageError('unsupported digest algorithm ' + alg);
   for (const file of positional) records.push({ alg, digest: (await digestOf(file, alg)).toString('hex'), salt: crypto.randomBytes(32).toString('hex') });
@@ -365,13 +379,17 @@ async function cmdComplete(positional, flags) {
   if (!saved || saved.format !== CLI_PENDING || !saved.pending || typeof saved.pending !== 'object' || !Array.isArray(saved.outputs)) {
     throw usageError('the file is not a submitted qstamp pending file');
   }
+  const home = realFolder(path.dirname(path.resolve(positional[0])));
   const outputs = saved.outputs.map((o) => {
-    if (typeof o !== 'string' || !path.isAbsolute(o)) throw usageError('the pending file names an invalid receipt path');
+    if (typeof o !== 'string' || !path.isAbsolute(o) || path.normalize(o) !== o) throw usageError('the pending file names an invalid receipt path');
     const base = path.basename(o);
     if (!base.endsWith(RECEIPT_SUFFIX) || base.startsWith('.') || base.length <= RECEIPT_SUFFIX.length) {
       throw usageError('the pending file names a receipt path that does not end in ' + RECEIPT_SUFFIX);
     }
-    return path.normalize(o);
+    if (home === null || realFolder(path.dirname(o)) !== home) {
+      throw usageError('the pending file names a receipt outside its own folder, receipts are written only next to the pending file');
+    }
+    return path.join(home, base);
   });
   if (new Set(outputs).size !== outputs.length) throw usageError('the pending file names the same receipt twice');
   const pending = Object.assign({}, saved.pending);
