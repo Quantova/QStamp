@@ -412,7 +412,7 @@ test('less than two thirds of the stake never proves an anchor, even when a help
   });
   const r = await verifyWith(pinned, receipt, opts, { helpers: lax });
   assert.strictEqual(r.status, 'unproven');
-  assert.ok(r.notices.some((n) => /less than two thirds/.test(n)));
+  assert.ok(r.notices.some((n) => /does not carry more than two thirds/.test(n)));
   const inflated = Object.assign({}, stubHelpers, {
     finality: throughCheck((chainId, genesis, headerHex) => {
       if (genesis !== qstamp.NETWORKS.testnet.genesis) throw new Error('the certificate does not verify under this genesis');
@@ -425,7 +425,7 @@ test('less than two thirds of the stake never proves an anchor, even when a help
   assert.strictEqual(shrunk.status, 'unproven');
 });
 
-test('signatures from exactly two thirds of the stake prove an anchor, as the chain accepts', async () => {
+test('signatures from exactly two thirds of the stake leave an anchor unproven, more than two thirds prove it', async () => {
   const thirds = [member(1, '10', 'a1'), member(2, '10', 'b2'), member(3, '10', 'c3')];
   const net = testNetwork({ finality: { epochBlocks: 2 ** 40, rosters: { 0: thirds } } });
   const chain = makeChain();
@@ -433,9 +433,15 @@ test('signatures from exactly two thirds of the stake prove an anchor, as the ch
   const record = Buffer.from('exactly two thirds');
   const receipt = await stamped(chain, record);
   const r = await verifyWith(net, receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: stubHelpers });
-  assert.strictEqual(r.status, 'valid');
-  assert.strictEqual(r.trust, 'finality-proof');
-  assert.match(r.checks.find((c) => c.name === 'finality').detail, /20 of 30 pinned stake/);
+  assert.strictEqual(r.status, 'unproven');
+  assert.ok(r.notices.some((n) => /does not carry more than two thirds/.test(n)), JSON.stringify(r.notices));
+  chain.certify = certificate([1, 2, 3], (id) => thirds.find((m) => m.id === id).attest_pk);
+  const all = Buffer.from('every validator');
+  const full = await stamped(chain, all);
+  const rf = await verifyWith(net, full, { bytes: all, clients: only(chain), trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.strictEqual(rf.status, 'valid');
+  assert.strictEqual(rf.trust, 'finality-proof');
+  assert.match(rf.checks.find((c) => c.name === 'finality').detail, /30 of 30 pinned stake/);
   chain.certify = certificate([1], (id) => thirds.find((m) => m.id === id).attest_pk);
   const lone = Buffer.from('one third');
   const fewer = await stamped(chain, lone);

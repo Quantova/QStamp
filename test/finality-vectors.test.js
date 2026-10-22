@@ -285,11 +285,13 @@ test('the vectors verify directly with the client core helpers', () => {
   assert.strictEqual(helpers.transaction(root, elsewhere.tx_id, elsewhere.leaf, JSON.stringify(elsewhere.steps)), false);
 });
 
-test('certificates from all, three of four and exactly two thirds of the stake prove a receipt confirmed by an endpoint', async () => {
+test('certificates from all and three of four of the stake prove a receipt confirmed by an endpoint, exactly two thirds does not', async () => {
+  const exact = await check(S.c_exactly_two_thirds, [{}, {}]);
+  assert.notStrictEqual(exact.status, 'valid');
+  assert.strictEqual(qstamp.isProven(exact), false);
   const cases = [
     ['a_all_sign', /8000 of 8000 pinned stake/],
     ['b_three_of_four', /6000 of 8000 pinned stake/],
-    ['c_exactly_two_thirds', /4000 of 6000 pinned stake/],
   ];
   for (const [name, pattern] of cases) {
     const r = await check(S[name], [{}, {}]);
