@@ -528,6 +528,8 @@ test('without transaction proofs from the gateway the transaction must be confir
   assert.strictEqual(unconfirmed.status, 'indeterminate');
   assert.strictEqual(qstamp.isProven(unconfirmed), false);
   assert.match(unconfirmed.trustDetail, /does not serve transaction inclusion proofs, so the transaction id in the receipt is not covered by the proof, and no endpoint confirmed the transaction/);
+  assert.ok(unconfirmed.checks.some((c) => !c.ok && c.transport && c.name === 'transaction'));
+  assert.ok(unconfirmed.checks.every((c) => c.ok || c.transport));
   for (const transaction of [(c, id) => Object.assign({}, c.txs.get(id), { raw: '00' }), () => ({ status: 'unknown' })]) {
     const disputed = await verifyWith(pinned, receipt, { bytes: record, clients: older({ transaction }), trustCustomEndpoints: true }, { helpers: stubHelpers });
     assert.strictEqual(disputed.status, 'indeterminate');
