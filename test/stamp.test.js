@@ -12,7 +12,8 @@ const path = require('path');
 const { core } = require('@quantovainc/qcore');
 const qstamp = require('..');
 const D = require('../lib/deadline');
-const { makeChain, client, gateway, SEED } = require('./chain');
+const wire = require('../lib/wire');
+const { makeChain, client, gateway, SEED, encode } = require('./chain');
 
 function options(chain, extra) {
   return Object.assign({
@@ -71,6 +72,22 @@ test('complete finishes a pending stamp through endpoints the caller chose', asy
   const [receipt] = await qstamp.stamp(options(chain, { onPending: (p) => { pending = p; } }));
   const again = await qstamp.complete(pending, { clients: [client(chain, 'https://alpha.example'), client(chain, 'https://beta.example')], timeoutMs: 1000 });
   assert.deepStrictEqual(again[0].anchor, receipt.anchor);
+});
+
+test('complete refuses a named transaction that does not carry the commitment of the stamp', async () => {
+  const chain = makeChain();
+  let pending = null;
+  await qstamp.stamp(options(chain, { onPending: (p) => { pending = JSON.parse(JSON.stringify(p)); } }));
+  const real = chain.txs.get(pending.tx);
+  const other = qstamp.commitment(Buffer.alloc(32, 9), 1, { genesis: chain.genesis, contract: chain.contract, sender: pending.sender, kind: pending.kind });
+  const wrongId = encode('QTX', Buffer.alloc(32, 0x42));
+  const wrong = { status: 'finalised', height: real.height, from: real.from, to: real.to, kind: 'call', raw: wire.stampArgs(other, pending.kind) };
+  Object.defineProperty(wrong, 'block', { enumerable: true, get: () => real.block });
+  chain.txs.set(wrongId, wrong);
+  const opts = { clients: [client(chain, 'https://alpha.example'), client(chain, 'https://beta.example')], timeoutMs: 1000 };
+  await assert.rejects(qstamp.complete(Object.assign({}, pending, { tx: wrongId }), opts), /does not carry the commitment of this stamp/);
+  const [receipt] = await qstamp.complete(pending, opts);
+  assert.strictEqual(receipt.anchor.tx, pending.tx);
 });
 
 test('concurrent stamps from one account are serialised so they never share a nonce', async () => {
