@@ -5,7 +5,7 @@
 set -euo pipefail
 
 QUANTA_REPO="https://github.com/Quantova/Quanta-Smart-Contract-language.git"
-QUANTA_COMMIT="fee72331441e73f7f604e4ddfbbd3d25aec1622b"
+QUANTA_COMMIT="071324a83f49aba0c638b61446f87b661a1008b1"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK="$(mktemp -d)"
