@@ -153,7 +153,6 @@ test('anchors that the history of the chain rules out are invalid before any end
   const receipt = await stamped(chain, record);
   const cases = [
     [{ time: 1577836800 }, /before the genesis/],
-    [{ time: Math.floor(Date.now() / 1000) + 3600 }, /in the future/],
     [{ time: net.genesisTime + 60, height: 5000000 }, /higher than the chain can have reached/],
     [{ time: net.genesisTime + 10 * 86400, height: 10 }, /lower than the chain had certainly reached/],
   ];
@@ -166,6 +165,29 @@ test('anchors that the history of the chain rules out are invalid before any end
     assert.strictEqual(p.ok, false);
     assert.match(p.detail, pattern);
   }
+});
+
+test('an anchor time ahead of the clock of the verifier is indeterminate unless a finality certificate fixes it', async () => {
+  const chain = makeChain();
+  const record = Buffer.from('a contract signed a moment ago');
+  const receipt = await stamped(chain, record);
+  const forged = JSON.parse(JSON.stringify(receipt));
+  forged.anchor.time = Math.floor(Date.now() / 1000) + 3600;
+  const r = await qstamp.verify(forged, { bytes: record, clients: [client(chain, 'https://alpha.example')], trustCustomEndpoints: true, trustSingleEndpoint: true });
+  assert.strictEqual(r.status, 'indeterminate');
+  const c = r.checks.find((x) => x.name === 'clock');
+  assert.strictEqual(c.ok, false);
+  assert.strictEqual(c.transport, true);
+  const realNow = Date.now;
+  Date.now = () => realNow() - 3600 * 1000;
+  let slow;
+  try {
+    slow = await qstamp.verify(receipt, { bytes: record, clients: [client(chain, 'https://alpha.example')], trustCustomEndpoints: true });
+  } finally {
+    Date.now = realNow;
+  }
+  assert.notStrictEqual(slow.status, 'invalid');
+  assert.ok(slow.checks.every((x) => x.ok || x.transport));
 });
 
 test('an anchor signed by an account other than the expected issuer is invalid', async () => {
