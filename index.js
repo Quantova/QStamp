@@ -5,7 +5,7 @@
 
 const { digestBytes, digestFile, ALGORITHMS } = require('./lib/hash');
 const { leafHash, rootFromPath, commitment, tree } = require('./lib/merkle');
-const { stamp, complete, prepare, PENDING_FORMAT } = require('./lib/stamp');
+const { stamp, complete, prepare, purposeIndex, PENDING_FORMAT } = require('./lib/stamp');
 const { verify, isProven } = require('./lib/verify');
 const { FORMAT, KINDS, validate } = require('./lib/receipt');
 const { NETWORKS } = require('./lib/networks');
@@ -21,6 +21,7 @@ module.exports = {
   deploymentDomain,
   recordDomain,
   prepare,
+  purposeIndex,
   digestBytes,
   digestFile,
   leafHash,

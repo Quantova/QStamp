@@ -90,6 +90,18 @@ test('complete refuses a named transaction that does not carry the commitment of
   assert.strictEqual(receipt.anchor.tx, pending.tx);
 });
 
+test('a purpose label gives a separate deterministic signing account for each purpose', async () => {
+  const hr = qstamp.purposeIndex('hr records');
+  assert.strictEqual(hr, qstamp.purposeIndex('hr records'));
+  assert.notStrictEqual(hr, qstamp.purposeIndex('ai agent actions'));
+  assert.ok(hr >= 2 ** 20 && hr < 2 ** 31);
+  for (const bad of ['', 'x'.repeat(129), 'a\nb', 7, null, 'e\u0301']) assert.throws(() => qstamp.purposeIndex(bad), /a purpose is a label/);
+  const chain = makeChain();
+  const [receipt] = await qstamp.stamp(options(chain, { index: hr }));
+  assert.strictEqual(receipt.anchor.sender, core.address(SEED, hr));
+  assert.notStrictEqual(receipt.anchor.sender, core.address(SEED, 0));
+});
+
 test('concurrent stamps from one account are serialised so they never share a nonce', async () => {
   const chain = makeChain();
   const one = (text) => options(chain, { records: [{ digest: qstamp.digestBytes(Buffer.from(text)) }] });

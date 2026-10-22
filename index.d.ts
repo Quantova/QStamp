@@ -182,6 +182,7 @@ export interface CommitmentContext {
 }
 
 export function stamp(options: StampOptions): Promise<Receipt[]>;
+export function purposeIndex(purpose: string): number;
 export interface ChainTimeOptions extends EndpointOptions {
   network?: 'testnet';
   clockSlackMs?: number;
