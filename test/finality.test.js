@@ -768,7 +768,7 @@ test('a proving endpoint that names no genesis or another chain name never prove
     net: pinned, receipt, helpers: stubHelpers, leaf: [], selectors: [wire.STAMPED_SELECTOR], data: '',
     sources: only(chain).map((c) => ({ client: c, label: c.base, info: { chain_id: 'Q-dev-net-7', genesis_hash: chain.genesis } })),
   });
-  assert.strictEqual(renamed.state, 'refuted');
+  assert.strictEqual(renamed.state, 'failed');
 });
 
 test('a receipt for a genesis other than the one the rosters are pinned for is refuted before any endpoint is asked', async () => {

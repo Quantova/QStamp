@@ -89,7 +89,29 @@ test('a definite negative from one endpoint against a positive from another is i
   assert.match(agreement.detail, /denier\.example/);
   assert.match(agreement.detail, /confirmer\.example/);
   const both = await qstamp.verify(receipt, { bytes: record, clients: [denier, client(chain, 'https://other.example', denies)], trustCustomEndpoints: true });
-  assert.strictEqual(both.status, 'invalid');
+  assert.strictEqual(both.status, 'indeterminate');
+  assert.ok(both.checks.every((c) => c.ok || c.transport));
+  assert.match(both.checks.find((c) => c.name === 'agreement').detail, /neither a verified finality certificate nor official endpoints of two different operators confirmed it/);
+});
+
+test('a denial from the one official endpoint of a single operator leaves a genuine receipt indeterminate, never invalid', async (t) => {
+  const chain = makeChain();
+  const record = Buffer.from('a signed agreement');
+  const receipt = await stamped(chain, record);
+  const denials = [
+    { events: () => ({ events: [] }) },
+    { block: (c, h) => Object.assign({}, c.blocks.get(Number(h)), { time: c.blocks.get(Number(h)).time + 1 }) },
+    { transaction: () => ({ status: 'unknown' }) },
+  ];
+  for (const denial of denials) {
+    const gw = await gateway(chain, denial);
+    t.after(() => gw.close());
+    const official = testNetwork({ rpcs: [{ url: gw.url, operator: 'Operator One' }] });
+    const r = await verifyWith(official, receipt, { bytes: record, allowLoopback: true }, null);
+    assert.strictEqual(r.status, 'indeterminate');
+    assert.ok(r.checks.some((c) => !c.ok));
+    assert.ok(r.checks.every((c) => c.ok || c.transport));
+  }
 });
 
 test('positive endpoints that disagree on the chain data are indeterminate', async () => {
@@ -375,7 +397,7 @@ function forgedEarlier(receipt, height) {
   return Object.assign({}, receipt, { anchor: Object.assign({}, receipt.anchor, { time: receipt.anchor.time - 5, height }) });
 }
 
-test('a receipt claiming an earlier time at a height above the head of every endpoint is invalid, not indeterminate', async (t) => {
+test('a receipt claiming an earlier time at a height above the head of every endpoint is invalid when official endpoints of two operators deny it and indeterminate otherwise', async (t) => {
   const chain = makeChain();
   const record = Buffer.from('a tender notice');
   const receipt = await stamped(chain, record);
@@ -395,7 +417,8 @@ test('a receipt claiming an earlier time at a height above the head of every end
     assert.match(c.detail, /later than the anchor time/);
   }
   const custom = await qstamp.verify(forged, { bytes: record, clients: [client(chain, 'https://alpha.example'), client(chain, 'https://beta.example')], trustCustomEndpoints: true });
-  assert.strictEqual(custom.status, 'invalid');
+  assert.strictEqual(custom.status, 'indeterminate');
+  assert.ok(custom.checks.every((c) => c.ok || c.transport));
   const gap = {
     block: (c, h) => {
       if (Number(h) === c.height) {
@@ -409,7 +432,7 @@ test('a receipt claiming an earlier time at a height above the head of every end
     },
   };
   const sparse = await qstamp.verify(forged, { bytes: record, clients: [client(chain, 'https://alpha.example', gap), client(chain, 'https://beta.example', gap)], trustCustomEndpoints: true });
-  assert.strictEqual(sparse.status, 'invalid');
+  assert.strictEqual(sparse.status, 'indeterminate');
   const genuine = await verifyWith(official, receipt, { bytes: record, allowLoopback: true }, null);
   assert.strictEqual(genuine.status, 'valid');
 });
