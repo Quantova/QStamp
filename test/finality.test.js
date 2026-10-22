@@ -915,8 +915,9 @@ test('on a network that pins rosters an official quorum without a finality proof
   assert.strictEqual(qstamp.isProven(required), false);
   const waived = testNetwork({ rpcs, requireFinality: false, finality: { epochBlocks: 2 ** 40, rosters: { 0: ROSTER } } });
   const quorum = await verifyWith(waived, receipt, { bytes: record, allowLoopback: true }, { helpers: stubHelpers });
-  assert.strictEqual(quorum.status, 'valid');
+  assert.strictEqual(quorum.status, 'unproven');
   assert.strictEqual(quorum.trust, 'official-quorum');
+  assert.strictEqual(qstamp.isProven(quorum), false);
 });
 
 test('on a network that pins rosters a finality proof from its official endpoints is still valid', async (t) => {

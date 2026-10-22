@@ -204,7 +204,7 @@ test('an anchor signed by an account other than the expected issuer is invalid',
   assert.strictEqual(right.status, 'unproven');
 });
 
-test('official endpoints run by two different operators that agree make a receipt valid', async (t) => {
+test('official endpoints run by two different operators that agree leave a receipt unproven without a finality proof', async (t) => {
   const chain = makeChain();
   const record = Buffer.from('a quarterly report');
   const receipt = await stamped(chain, record);
@@ -213,12 +213,13 @@ test('official endpoints run by two different operators that agree make a receip
   t.after(() => Promise.all([one.close(), two.close()]));
   const official = testNetwork({ rpcs: [{ url: one.url, operator: 'Operator One' }, { url: two.url, operator: 'Operator Two' }] });
   const r = await verifyWith(official, receipt, { bytes: record, allowLoopback: true }, null);
-  assert.strictEqual(r.status, 'valid');
+  assert.strictEqual(r.status, 'unproven');
+  assert.strictEqual(r.valid, false);
+  assert.strictEqual(r.proven, false);
   assert.strictEqual(r.trust, 'official-quorum');
   assert.strictEqual(r.officialEndpoints, true);
-  assert.strictEqual(qstamp.isProven(r), true);
-  assert.strictEqual(qstamp.isProven(Object.assign({}, r)), false);
-  assert.strictEqual(qstamp.isProven(JSON.parse(JSON.stringify(r))), false);
+  assert.strictEqual(qstamp.isProven(r), false);
+  assert.deepStrictEqual(failing(r).map((c) => [c.name, c.transport]), [['proof', true]]);
   assert.deepStrictEqual(r.operators.sort(), ['Operator One', 'Operator Two']);
 });
 
@@ -249,7 +250,8 @@ test('officialEndpoints is false as soon as one consulted endpoint is not offici
   assert.strictEqual(mixed.status, 'unproven');
   const both = await verifyWith(official, receipt, { bytes: record, rpc: [one.url, two.url], allowLoopback: true }, null);
   assert.strictEqual(both.officialEndpoints, true);
-  assert.strictEqual(both.status, 'valid');
+  assert.strictEqual(both.status, 'unproven');
+  assert.strictEqual(both.trust, 'official-quorum');
 });
 
 test('a single official endpoint gives an honest unproven result by default', async (t) => {
@@ -318,7 +320,7 @@ test('a commitment withdrawn by the issuer is never valid and the result reports
   const official = testNetwork({ rpcs: [{ url: one.url, operator: 'Operator One' }, { url: two.url, operator: 'Operator Two' }] });
   const opts = { bytes: record, contract, trustCustomContract: true, allowLoopback: true };
   const before = await verifyWith(official, receipt, opts, null);
-  assert.strictEqual(before.status, 'valid');
+  assert.strictEqual(before.status, 'unproven');
   assert.strictEqual(before.revoked, false);
   chain.revoke(contract, REVOCATION_TAGS[wire.COMMITMENT_STAMPED_SELECTOR], anchored.toString('hex'), 7);
   const after = await verifyWith(official, receipt, opts, null);
@@ -345,7 +347,7 @@ test('a stamp recorded with the open event layout, as the council template does,
   t.after(() => Promise.all([one.close(), two.close()]));
   const official = testNetwork({ rpcs: [{ url: one.url, operator: 'Operator One' }, { url: two.url, operator: 'Operator Two' }] });
   const quorum = await verifyWith(official, receipt, { bytes: record, contract, trustCustomContract: true, allowLoopback: true }, null);
-  assert.strictEqual(quorum.status, 'valid');
+  assert.strictEqual(quorum.status, 'unproven');
   assert.strictEqual(quorum.revoked, null);
 });
 
@@ -406,7 +408,7 @@ test('a fabricated anchor never verifies valid through any combination of option
   }
 });
 
-test('isProven accepts only a valid result reached through a proof or an official quorum and never a hand made one', () => {
+test('isProven accepts only a valid result reached through a finality proof and never a hand made one', () => {
   assert.strictEqual(qstamp.isProven({ status: 'valid', valid: true, proven: true, trust: 'official-quorum' }), false);
   assert.strictEqual(qstamp.isProven({ status: 'valid', valid: true, proven: true, trust: 'finality-proof' }), false);
   assert.strictEqual(qstamp.isProven({ status: 'valid', valid: true, trust: 'official-quorum' }), false);
@@ -456,7 +458,7 @@ test('a receipt claiming an earlier time at a height above the head of every end
   const sparse = await qstamp.verify(forged, { bytes: record, clients: [client(chain, 'https://alpha.example', gap), client(chain, 'https://beta.example', gap)], trustCustomEndpoints: true });
   assert.strictEqual(sparse.status, 'indeterminate');
   const genuine = await verifyWith(official, receipt, { bytes: record, allowLoopback: true }, null);
-  assert.strictEqual(genuine.status, 'valid');
+  assert.strictEqual(genuine.status, 'unproven');
 });
 
 test('an endpoint that lags behind the anchor and whose head is not later than the anchor time is not taken as a denial', async () => {

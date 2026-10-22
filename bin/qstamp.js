@@ -27,8 +27,8 @@ const USAGE = [
   'qstamp kinds',
   'qstamp domain [--record <ledger.json> --contract <address> --genesis <hex> [--domain <n>]]',
   '',
-  'A receipt is reported VALID only when its anchor is proven, by a finality certificate of the validators or by official endpoints of two different operators.',
-  'A receipt confirmed only by one operator or by endpoints you chose is reported UNPROVEN and exits with status 3.',
+  'A receipt is reported VALID only when its anchor is proven by a finality certificate of the validators pinned in this release.',
+  'A receipt confirmed by endpoints alone, even by official endpoints of two different operators, is reported UNPROVEN and exits with status 3.',
   'Endpoints other than the official ones are consulted by verify only with --trust-custom-endpoints.',
   'Stamping accepts chain data only when at least two independent endpoints agree, or with --trust-single-endpoint.',
   'domain prints a fresh random 64 bit deployment domain for the issuer and council templates. With --record it also writes the domain, the contract and the genesis hash',
@@ -416,8 +416,9 @@ async function cmdVerify(positional, flags) {
       const when = Number.isNaN(t.getTime()) ? String(receipt.anchor.time) : t.toISOString();
       process.stdout.write('VALID  stamped no later than ' + when + ' in block ' + receipt.anchor.height + ' by ' + receipt.anchor.sender + '\n');
     } else if (result.status === 'unproven') {
-      process.stdout.write('WARNING  this receipt is NOT proven. The chain data came from ' + (result.trust === 'custom-endpoints' ? 'endpoints you chose' : 'a single operator') + ', which could have invented it. Do not rely on it as evidence.\n');
-      process.stdout.write('UNPROVEN  the anchor matches the endpoints consulted, but it was not proven by a finality certificate or by official endpoints of two different operators\n');
+      const source = result.trust === 'custom-endpoints' ? 'endpoints you chose' : result.trust === 'official-quorum' ? 'official endpoints of different operators, which could have agreed on it' : 'a single operator';
+      process.stdout.write('WARNING  this receipt is NOT proven. The chain data came from ' + source + ', which could have invented it. Do not rely on it as evidence.\n');
+      process.stdout.write('UNPROVEN  the anchor matches the endpoints consulted, but it was not proven by a finality certificate of the validators\n');
     } else if (result.status === 'indeterminate') {
       process.stdout.write('INDETERMINATE  the anchor could be neither confirmed nor refuted, see the checks above and try again later\n');
     } else {
