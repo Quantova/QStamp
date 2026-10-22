@@ -35,7 +35,7 @@ for (const file of files()) {
   if (lines[start] !== HEADER[0] || lines[start + 1] !== HEADER[1]) problems.push(rel + ' lacks the copyright and licence header');
   lines.forEach((line, i) => {
     if (i > start + 1 && /^\s*(\/\/|\/\*)/.test(line)) problems.push(rel + ':' + (i + 1) + ' holds a comment');
-    if (/\s+$/.test(line)) problems.push(rel + ':' + (i + 1) + ' has trailing white space');
+    if (line !== line.trimEnd()) problems.push(rel + ':' + (i + 1) + ' has trailing white space');
     if (/\t/.test(line)) problems.push(rel + ':' + (i + 1) + ' holds a tab');
     if (/[\u2028\u2029]/.test(line)) problems.push(rel + ':' + (i + 1) + ' holds a raw line separator');
   });
