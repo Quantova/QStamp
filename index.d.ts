@@ -110,6 +110,7 @@ export interface VerifyOptions extends EndpointOptions {
   contract?: string;
   trustCustomContract?: boolean;
   expectedSender?: string | string[];
+  expectedKind?: string | number | bigint;
 }
 
 export interface VerifyCheck {
@@ -129,6 +130,8 @@ export interface VerifyResult {
   trustDetail: string;
   revoked: null | false | { reason: string };
   contentChecked: boolean;
+  senderChecked: boolean;
+  kindChecked: boolean;
   endpoints: string[];
   officialEndpoints: boolean;
   operators: string[];

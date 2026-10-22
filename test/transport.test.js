@@ -114,7 +114,7 @@ test('an abort signal stops a request at once', async (t) => {
     assert.strictEqual(r.valid, false);
     assert.strictEqual(qstamp.isProven(r), false);
     assert.match(r.checks[0].detail, /deadlineMs|AbortSignal/);
-    assert.deepStrictEqual(Object.keys(r).sort(), ['checks', 'contentChecked', 'endpoints', 'notices', 'officialEndpoints', 'operators', 'proven', 'revoked', 'status', 'trust', 'trustDetail', 'valid']);
+    assert.deepStrictEqual(Object.keys(r).sort(), ['checks', 'contentChecked', 'endpoints', 'kindChecked', 'notices', 'officialEndpoints', 'operators', 'proven', 'revoked', 'senderChecked', 'status', 'trust', 'trustDetail', 'valid']);
   }
   await assert.rejects(qstamp.stamp({ seed: SEED, index: 0, records: [{ digest: Buffer.alloc(32, 5) }], signal: controller.signal, clients: [] }), /aborted/);
 });

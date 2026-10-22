@@ -23,7 +23,7 @@ const USAGE = [
   'qstamp hash <file...> [--alg sha3-256|sha256]',
   'qstamp stamp <file...> --seed-file <path> --index <n> [--kind <kind>] [--alg <alg>] [--rpc <url>]... [--trust-single-endpoint] [--allow-endpoint <host>]... [--allow-loopback] [--out <dir>] [--max-fee <quon>] [--force]',
   'qstamp complete <pending.json> [--tx <id>] [--rpc <url>]... [--trust-single-endpoint] [--allow-endpoint <host>]... [--allow-loopback] [--force]',
-  'qstamp verify <receipt.json> (--file <path> | --digest <hex>) [--expect-sender <address>]... [--rpc <url>]... [--trust-custom-endpoints] [--allow-endpoint <host>]... [--allow-loopback] [--json]',
+  'qstamp verify <receipt.json> (--file <path> | --digest <hex>) [--expect-sender <address>]... [--expect-kind <kind>] [--rpc <url>]... [--trust-custom-endpoints] [--allow-endpoint <host>]... [--allow-loopback] [--json]',
   'qstamp kinds',
   'qstamp domain [--record <ledger.json> --contract <address> --genesis <hex> [--domain <n>]]',
   '',
@@ -39,7 +39,7 @@ const FLAGS = {
   hash: { alg: 'value' },
   stamp: { 'seed-file': 'value', index: 'value', kind: 'value', alg: 'value', rpc: 'multi', 'trust-single-endpoint': 'bool', 'allow-endpoint': 'multi', 'allow-loopback': 'bool', out: 'value', 'max-fee': 'value', network: 'value', force: 'bool' },
   complete: { rpc: 'multi', 'trust-single-endpoint': 'bool', 'allow-endpoint': 'multi', 'allow-loopback': 'bool', tx: 'value', force: 'bool' },
-  verify: { file: 'value', digest: 'value', 'expect-sender': 'multi', rpc: 'multi', 'trust-single-endpoint': 'bool', 'trust-custom-endpoints': 'bool', 'allow-endpoint': 'multi', 'allow-loopback': 'bool', json: 'bool' },
+  verify: { file: 'value', digest: 'value', 'expect-sender': 'multi', 'expect-kind': 'value', rpc: 'multi', 'trust-single-endpoint': 'bool', 'trust-custom-endpoints': 'bool', 'allow-endpoint': 'multi', 'allow-loopback': 'bool', json: 'bool' },
   kinds: {},
   domain: { record: 'value', contract: 'value', genesis: 'value', domain: 'value' },
   help: {},
@@ -417,6 +417,7 @@ async function cmdVerify(positional, flags) {
     else options.file = flags.file;
   }
   if (flags['expect-sender']) options.expectedSender = flags['expect-sender'];
+  if (flags['expect-kind'] !== undefined) options.expectedKind = flags['expect-kind'];
   const result = await qstamp.verify(receipt, options);
   if (flags.json) {
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');

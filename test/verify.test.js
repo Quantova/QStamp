@@ -204,6 +204,27 @@ test('an anchor signed by an account other than the expected issuer is invalid',
   assert.strictEqual(right.status, 'unproven');
 });
 
+test('an expected kind refuses a receipt of another kind and the result states which pins were checked', async () => {
+  const chain = makeChain();
+  const record = Buffer.from('a record of one kind');
+  const receipt = await stamped(chain, record);
+  const opts = { bytes: record, clients: [client(chain, 'https://alpha.example')], trustCustomEndpoints: true };
+  const loose = await qstamp.verify(receipt, opts);
+  assert.strictEqual(loose.senderChecked, false);
+  assert.strictEqual(loose.kindChecked, false);
+  assert.ok(loose.notices.some((n) => /no expectedSender was given/.test(n)));
+  const wrong = await qstamp.verify(receipt, Object.assign({ expectedKind: 'financial_record' }, opts));
+  assert.strictEqual(wrong.status, 'invalid');
+  assert.strictEqual(wrong.checks.find((c) => c.name === 'kind').ok, false);
+  const right = await qstamp.verify(receipt, Object.assign({ expectedKind: 'document', expectedSender: receipt.anchor.sender }, opts));
+  assert.strictEqual(right.checks.find((c) => c.name === 'kind').ok, true);
+  assert.strictEqual(right.kindChecked, true);
+  assert.strictEqual(right.senderChecked, true);
+  assert.strictEqual(right.status, 'unproven');
+  const bad = await qstamp.verify(receipt, Object.assign({ expectedKind: 'no such kind' }, opts));
+  assert.strictEqual(bad.status, 'invalid');
+});
+
 test('official endpoints run by two different operators that agree leave a receipt unproven without a finality proof', async (t) => {
   const chain = makeChain();
   const record = Buffer.from('a quarterly report');
