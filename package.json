@@ -39,7 +39,7 @@
     "linux"
   ],
   "dependencies": {
-    "@quantovainc/qcore": "0.10.0"
+    "@quantovainc/qcore": "0.11.0"
   },
   "keywords": [
     "post-quantum",

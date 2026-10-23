@@ -179,9 +179,9 @@ test('the vectors pin the testnet chain and well formed rosters', () => {
   assert.strictEqual(V.chain.contract, qstamp.NETWORKS.testnet.contract);
   assert.strictEqual(String(helpers.chainId(V.chain.name)), V.chain.id);
   assert.strictEqual(V.epoch, Math.floor(V.height / V.epoch_blocks));
-  assert.deepStrictEqual(V.source['Quantova-Chain'], '2bc396ad5dd0bc9f57670b0c8f4b5786c9824325');
-  assert.deepStrictEqual(V.source['QRC-CONSENSUS'], '9a4337fe0945609d21c0b8b12b1c41816cfc57ae');
-  assert.deepStrictEqual(V.source['Q-Crypto'], 'e47d6cd94e71c13b22e2990f8c2b0a2e3a2204d0');
+  assert.deepStrictEqual(V.source['Quantova-Chain'], '806cdd956e277cfed818ef30311ecec0b84b003c');
+  assert.deepStrictEqual(V.source['QRC-CONSENSUS'], '223e012417d804d2e953445c38c2b87d0bff6b34');
+  assert.deepStrictEqual(V.source['Q-Crypto'], '04e5ae26a089df4e4cc8f20f3973b7cbbee594e3');
   assert.deepStrictEqual(Object.keys(V.rosters).sort(), ['four', 'three']);
   assert.strictEqual(V.rosters.four.length, 4);
   assert.strictEqual(V.rosters.three.length, 3);
@@ -217,7 +217,6 @@ test('the vectors verify directly with the client core helpers', () => {
   const accepted = {
     a_all_sign: ['8000', '8000'],
     b_three_of_four: ['6000', '8000'],
-    c_exactly_two_thirds: ['4000', '6000'],
     g_equivocation: ['8000', '8000'],
     h_broken_inclusion: ['8000', '8000'],
     i_other_contract: ['8000', '8000'],
@@ -225,7 +224,8 @@ test('the vectors verify directly with the client core helpers', () => {
     j_broken_transaction_path: ['8000', '8000'],
   };
   const refused = {
-    d_below_two_thirds: /less than two thirds of the stake/,
+    c_exactly_two_thirds: /two thirds of the stake or less/,
+    d_below_two_thirds: /two thirds of the stake or less/,
     e_keys_outside_roster: /signature does not verify/,
     e_ids_outside_roster: /validator outside the roster/,
     f_other_chain_id: /signature does not verify/,

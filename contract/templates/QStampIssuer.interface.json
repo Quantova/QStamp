@@ -40,38 +40,43 @@
               "width": 32
             },
             {
-              "key": "order.commitment",
+              "key": "@genesis",
               "offset": 120,
               "width": 32
             },
             {
-              "key": "order#scheme",
+              "key": "order.commitment",
               "offset": 152,
-              "width": 8
+              "width": 32
             },
             {
-              "key": "order#ptr",
-              "offset": 160,
-              "width": 8
-            },
-            {
-              "key": "order.domain",
-              "offset": 168,
-              "width": 8
-            },
-            {
-              "key": "order.deadline",
-              "offset": 176,
-              "width": 8
-            },
-            {
-              "key": "order.kind",
+              "key": "order#scheme",
               "offset": 184,
               "width": 8
             },
             {
-              "key": "order#expiry",
+              "key": "order#ptr",
               "offset": 192,
+              "width": 8
+            },
+            {
+              "key": "order.domain",
+              "offset": 200,
+              "width": 8
+            },
+            {
+              "key": "order.deadline",
+              "offset": 208,
+              "width": 8
+            },
+            {
+              "key": "order.kind",
+              "offset": 216,
+              "width": 8
+            },
+            {
+              "key": "order#expiry",
+              "offset": 224,
               "width": 8
             }
           ],
@@ -138,38 +143,43 @@
               "width": 32
             },
             {
-              "key": "order.commitment",
+              "key": "@genesis",
               "offset": 120,
               "width": 32
             },
             {
-              "key": "order#scheme",
+              "key": "order.commitment",
               "offset": 152,
-              "width": 8
+              "width": 32
             },
             {
-              "key": "order#ptr",
-              "offset": 160,
-              "width": 8
-            },
-            {
-              "key": "order.domain",
-              "offset": 168,
-              "width": 8
-            },
-            {
-              "key": "order.deadline",
-              "offset": 176,
-              "width": 8
-            },
-            {
-              "key": "order.reason",
+              "key": "order#scheme",
               "offset": 184,
               "width": 8
             },
             {
-              "key": "order#expiry",
+              "key": "order#ptr",
               "offset": 192,
+              "width": 8
+            },
+            {
+              "key": "order.domain",
+              "offset": 200,
+              "width": 8
+            },
+            {
+              "key": "order.deadline",
+              "offset": 208,
+              "width": 8
+            },
+            {
+              "key": "order.reason",
+              "offset": 216,
+              "width": 8
+            },
+            {
+              "key": "order#expiry",
+              "offset": 224,
               "width": 8
             }
           ],
@@ -236,33 +246,38 @@
               "width": 32
             },
             {
-              "key": "order#scheme",
+              "key": "@genesis",
               "offset": 120,
+              "width": 32
+            },
+            {
+              "key": "order#scheme",
+              "offset": 152,
               "width": 8
             },
             {
               "key": "order#ptr",
-              "offset": 128,
+              "offset": 160,
               "width": 8
             },
             {
               "key": "order.domain",
-              "offset": 136,
+              "offset": 168,
               "width": 8
             },
             {
               "key": "order.deadline",
-              "offset": 144,
+              "offset": 176,
               "width": 8
             },
             {
               "key": "order.issuer",
-              "offset": 152,
+              "offset": 184,
               "width": 32
             },
             {
               "key": "order#expiry",
-              "offset": 184,
+              "offset": 216,
               "width": 8
             }
           ],
@@ -326,28 +341,33 @@
               "width": 32
             },
             {
-              "key": "order#scheme",
+              "key": "@genesis",
               "offset": 120,
+              "width": 32
+            },
+            {
+              "key": "order#scheme",
+              "offset": 152,
               "width": 8
             },
             {
               "key": "order#ptr",
-              "offset": 128,
+              "offset": 160,
               "width": 8
             },
             {
               "key": "order.domain",
-              "offset": 136,
+              "offset": 168,
               "width": 8
             },
             {
               "key": "order.deadline",
-              "offset": 144,
+              "offset": 176,
               "width": 8
             },
             {
               "key": "order#expiry",
-              "offset": 152,
+              "offset": 184,
               "width": 8
             }
           ],
@@ -408,33 +428,38 @@
               "width": 32
             },
             {
-              "key": "order#scheme",
+              "key": "@genesis",
               "offset": 120,
+              "width": 32
+            },
+            {
+              "key": "order#scheme",
+              "offset": 152,
               "width": 8
             },
             {
               "key": "order#ptr",
-              "offset": 128,
+              "offset": 160,
               "width": 8
             },
             {
               "key": "order.domain",
-              "offset": 136,
+              "offset": 168,
               "width": 8
             },
             {
               "key": "order.deadline",
-              "offset": 144,
+              "offset": 176,
               "width": 8
             },
             {
               "key": "order.owner",
-              "offset": 152,
+              "offset": 184,
               "width": 32
             },
             {
               "key": "order#expiry",
-              "offset": 184,
+              "offset": 216,
               "width": 8
             }
           ],
@@ -498,28 +523,33 @@
               "width": 32
             },
             {
-              "key": "order#scheme",
+              "key": "@genesis",
               "offset": 120,
+              "width": 32
+            },
+            {
+              "key": "order#scheme",
+              "offset": 152,
               "width": 8
             },
             {
               "key": "order#ptr",
-              "offset": 128,
+              "offset": 160,
               "width": 8
             },
             {
               "key": "order.domain",
-              "offset": 136,
+              "offset": 168,
               "width": 8
             },
             {
               "key": "order.deadline",
-              "offset": 144,
+              "offset": 176,
               "width": 8
             },
             {
               "key": "order#expiry",
-              "offset": 152,
+              "offset": 184,
               "width": 8
             }
           ],
@@ -580,12 +610,12 @@
       "deploy_params": [
         {
           "key": "deploy_params.issuer",
-          "offset": 120,
+          "offset": 152,
           "width": 32
         },
         {
           "key": "deploy_params.domain",
-          "offset": 152,
+          "offset": 184,
           "width": 8
         }
       ]

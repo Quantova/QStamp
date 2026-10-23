@@ -40,83 +40,88 @@
               "width": 32
             },
             {
-              "key": "order.domain",
+              "key": "@genesis",
               "offset": 120,
+              "width": 32
+            },
+            {
+              "key": "order.domain",
+              "offset": 152,
               "width": 8
             },
             {
               "key": "order.relayer",
-              "offset": 128,
+              "offset": 160,
               "width": 32
             },
             {
               "key": "order.deadline",
-              "offset": 160,
+              "offset": 192,
               "width": 8
             },
             {
               "key": "order.hi",
-              "offset": 168,
+              "offset": 200,
               "width": 16
             },
             {
               "key": "order.lo",
-              "offset": 184,
+              "offset": 216,
               "width": 16
             },
             {
               "key": "order.kind",
-              "offset": 200,
-              "width": 8
-            },
-            {
-              "key": "approvals#expiry",
-              "offset": 208,
-              "width": 8
-            },
-            {
-              "key": "approvals#0#scheme",
-              "offset": 216,
-              "width": 8
-            },
-            {
-              "key": "approvals#0#ptr",
-              "offset": 224,
-              "width": 8
-            },
-            {
-              "key": "approvals#0#index",
               "offset": 232,
               "width": 8
             },
             {
-              "key": "approvals#1#scheme",
+              "key": "approvals#expiry",
               "offset": 240,
               "width": 8
             },
             {
-              "key": "approvals#1#ptr",
+              "key": "approvals#0#scheme",
               "offset": 248,
               "width": 8
             },
             {
-              "key": "approvals#1#index",
+              "key": "approvals#0#ptr",
               "offset": 256,
               "width": 8
             },
             {
-              "key": "approvals#2#scheme",
+              "key": "approvals#0#index",
               "offset": 264,
               "width": 8
             },
             {
-              "key": "approvals#2#ptr",
+              "key": "approvals#1#scheme",
               "offset": 272,
               "width": 8
             },
             {
-              "key": "approvals#2#index",
+              "key": "approvals#1#ptr",
               "offset": 280,
+              "width": 8
+            },
+            {
+              "key": "approvals#1#index",
+              "offset": 288,
+              "width": 8
+            },
+            {
+              "key": "approvals#2#scheme",
+              "offset": 296,
+              "width": 8
+            },
+            {
+              "key": "approvals#2#ptr",
+              "offset": 304,
+              "width": 8
+            },
+            {
+              "key": "approvals#2#index",
+              "offset": 312,
               "width": 8
             }
           ],
@@ -189,83 +194,88 @@
               "width": 32
             },
             {
-              "key": "new_officials",
+              "key": "@genesis",
               "offset": 120,
+              "width": 32
+            },
+            {
+              "key": "new_officials",
+              "offset": 152,
               "width": 160
             },
             {
               "key": "order.domain",
-              "offset": 280,
-              "width": 8
-            },
-            {
-              "key": "order.deadline",
-              "offset": 288,
-              "width": 8
-            },
-            {
-              "key": "approvals#expiry",
-              "offset": 296,
-              "width": 8
-            },
-            {
-              "key": "approvals#0#scheme",
-              "offset": 304,
-              "width": 8
-            },
-            {
-              "key": "approvals#0#ptr",
               "offset": 312,
               "width": 8
             },
             {
-              "key": "approvals#0#index",
+              "key": "order.deadline",
               "offset": 320,
               "width": 8
             },
             {
-              "key": "approvals#1#scheme",
+              "key": "approvals#expiry",
               "offset": 328,
               "width": 8
             },
             {
-              "key": "approvals#1#ptr",
+              "key": "approvals#0#scheme",
               "offset": 336,
               "width": 8
             },
             {
-              "key": "approvals#1#index",
+              "key": "approvals#0#ptr",
               "offset": 344,
               "width": 8
             },
             {
-              "key": "approvals#2#scheme",
+              "key": "approvals#0#index",
               "offset": 352,
               "width": 8
             },
             {
-              "key": "approvals#2#ptr",
+              "key": "approvals#1#scheme",
               "offset": 360,
               "width": 8
             },
             {
-              "key": "approvals#2#index",
+              "key": "approvals#1#ptr",
               "offset": 368,
               "width": 8
             },
             {
-              "key": "approvals#3#scheme",
+              "key": "approvals#1#index",
               "offset": 376,
               "width": 8
             },
             {
-              "key": "approvals#3#ptr",
+              "key": "approvals#2#scheme",
               "offset": 384,
               "width": 8
             },
             {
-              "key": "approvals#3#index",
+              "key": "approvals#2#ptr",
               "offset": 392,
+              "width": 8
+            },
+            {
+              "key": "approvals#2#index",
+              "offset": 400,
+              "width": 8
+            },
+            {
+              "key": "approvals#3#scheme",
+              "offset": 408,
+              "width": 8
+            },
+            {
+              "key": "approvals#3#ptr",
+              "offset": 416,
+              "width": 8
+            },
+            {
+              "key": "approvals#3#index",
+              "offset": 424,
               "width": 8
             }
           ],
@@ -329,103 +339,108 @@
               "width": 32
             },
             {
-              "key": "order.domain",
+              "key": "@genesis",
               "offset": 120,
-              "width": 8
+              "width": 32
             },
             {
-              "key": "order.deadline",
-              "offset": 128,
-              "width": 8
-            },
-            {
-              "key": "order.epoch",
-              "offset": 136,
-              "width": 8
-            },
-            {
-              "key": "order.armed",
-              "offset": 144,
-              "width": 8
-            },
-            {
-              "key": "confirmations#expiry",
+              "key": "order.domain",
               "offset": 152,
               "width": 8
             },
             {
-              "key": "confirmations#0#scheme",
+              "key": "order.deadline",
               "offset": 160,
               "width": 8
             },
             {
-              "key": "confirmations#0#ptr",
+              "key": "order.epoch",
               "offset": 168,
               "width": 8
             },
             {
-              "key": "confirmations#0#index",
+              "key": "order.armed",
               "offset": 176,
               "width": 8
             },
             {
-              "key": "confirmations#1#scheme",
+              "key": "confirmations#expiry",
               "offset": 184,
               "width": 8
             },
             {
-              "key": "confirmations#1#ptr",
+              "key": "confirmations#0#scheme",
               "offset": 192,
               "width": 8
             },
             {
-              "key": "confirmations#1#index",
+              "key": "confirmations#0#ptr",
               "offset": 200,
               "width": 8
             },
             {
-              "key": "confirmations#2#scheme",
+              "key": "confirmations#0#index",
               "offset": 208,
               "width": 8
             },
             {
-              "key": "confirmations#2#ptr",
+              "key": "confirmations#1#scheme",
               "offset": 216,
               "width": 8
             },
             {
-              "key": "confirmations#2#index",
+              "key": "confirmations#1#ptr",
               "offset": 224,
               "width": 8
             },
             {
-              "key": "confirmations#3#scheme",
+              "key": "confirmations#1#index",
               "offset": 232,
               "width": 8
             },
             {
-              "key": "confirmations#3#ptr",
+              "key": "confirmations#2#scheme",
               "offset": 240,
               "width": 8
             },
             {
-              "key": "confirmations#3#index",
+              "key": "confirmations#2#ptr",
               "offset": 248,
               "width": 8
             },
             {
-              "key": "confirmations#4#scheme",
+              "key": "confirmations#2#index",
               "offset": 256,
               "width": 8
             },
             {
-              "key": "confirmations#4#ptr",
+              "key": "confirmations#3#scheme",
               "offset": 264,
               "width": 8
             },
             {
-              "key": "confirmations#4#index",
+              "key": "confirmations#3#ptr",
               "offset": 272,
+              "width": 8
+            },
+            {
+              "key": "confirmations#3#index",
+              "offset": 280,
+              "width": 8
+            },
+            {
+              "key": "confirmations#4#scheme",
+              "offset": 288,
+              "width": 8
+            },
+            {
+              "key": "confirmations#4#ptr",
+              "offset": 296,
+              "width": 8
+            },
+            {
+              "key": "confirmations#4#index",
+              "offset": 304,
               "width": 8
             }
           ],
@@ -492,88 +507,93 @@
               "width": 32
             },
             {
-              "key": "order.domain",
+              "key": "@genesis",
               "offset": 120,
-              "width": 8
+              "width": 32
             },
             {
-              "key": "order.deadline",
-              "offset": 128,
-              "width": 8
-            },
-            {
-              "key": "order.epoch",
-              "offset": 136,
-              "width": 8
-            },
-            {
-              "key": "order.armed",
-              "offset": 144,
-              "width": 8
-            },
-            {
-              "key": "approvals#expiry",
+              "key": "order.domain",
               "offset": 152,
               "width": 8
             },
             {
-              "key": "approvals#0#scheme",
+              "key": "order.deadline",
               "offset": 160,
               "width": 8
             },
             {
-              "key": "approvals#0#ptr",
+              "key": "order.epoch",
               "offset": 168,
               "width": 8
             },
             {
-              "key": "approvals#0#index",
+              "key": "order.armed",
               "offset": 176,
               "width": 8
             },
             {
-              "key": "approvals#1#scheme",
+              "key": "approvals#expiry",
               "offset": 184,
               "width": 8
             },
             {
-              "key": "approvals#1#ptr",
+              "key": "approvals#0#scheme",
               "offset": 192,
               "width": 8
             },
             {
-              "key": "approvals#1#index",
+              "key": "approvals#0#ptr",
               "offset": 200,
               "width": 8
             },
             {
-              "key": "approvals#2#scheme",
+              "key": "approvals#0#index",
               "offset": 208,
               "width": 8
             },
             {
-              "key": "approvals#2#ptr",
+              "key": "approvals#1#scheme",
               "offset": 216,
               "width": 8
             },
             {
-              "key": "approvals#2#index",
+              "key": "approvals#1#ptr",
               "offset": 224,
               "width": 8
             },
             {
-              "key": "approvals#3#scheme",
+              "key": "approvals#1#index",
               "offset": 232,
               "width": 8
             },
             {
-              "key": "approvals#3#ptr",
+              "key": "approvals#2#scheme",
               "offset": 240,
               "width": 8
             },
             {
-              "key": "approvals#3#index",
+              "key": "approvals#2#ptr",
               "offset": 248,
+              "width": 8
+            },
+            {
+              "key": "approvals#2#index",
+              "offset": 256,
+              "width": 8
+            },
+            {
+              "key": "approvals#3#scheme",
+              "offset": 264,
+              "width": 8
+            },
+            {
+              "key": "approvals#3#ptr",
+              "offset": 272,
+              "width": 8
+            },
+            {
+              "key": "approvals#3#index",
+              "offset": 280,
               "width": 8
             }
           ],
@@ -640,48 +660,53 @@
               "width": 32
             },
             {
-              "key": "order.domain",
+              "key": "@genesis",
               "offset": 120,
-              "width": 8
+              "width": 32
             },
             {
-              "key": "order.deadline",
-              "offset": 128,
-              "width": 8
-            },
-            {
-              "key": "approvals#expiry",
-              "offset": 136,
-              "width": 8
-            },
-            {
-              "key": "approvals#0#scheme",
-              "offset": 144,
-              "width": 8
-            },
-            {
-              "key": "approvals#0#ptr",
+              "key": "order.domain",
               "offset": 152,
               "width": 8
             },
             {
-              "key": "approvals#0#index",
+              "key": "order.deadline",
               "offset": 160,
               "width": 8
             },
             {
-              "key": "approvals#1#scheme",
+              "key": "approvals#expiry",
               "offset": 168,
               "width": 8
             },
             {
-              "key": "approvals#1#ptr",
+              "key": "approvals#0#scheme",
               "offset": 176,
               "width": 8
             },
             {
-              "key": "approvals#1#index",
+              "key": "approvals#0#ptr",
               "offset": 184,
+              "width": 8
+            },
+            {
+              "key": "approvals#0#index",
+              "offset": 192,
+              "width": 8
+            },
+            {
+              "key": "approvals#1#scheme",
+              "offset": 200,
+              "width": 8
+            },
+            {
+              "key": "approvals#1#ptr",
+              "offset": 208,
+              "width": 8
+            },
+            {
+              "key": "approvals#1#index",
+              "offset": 216,
               "width": 8
             }
           ],
@@ -742,12 +767,12 @@
       "deploy_params": [
         {
           "key": "deploy_params.officials",
-          "offset": 120,
+          "offset": 152,
           "width": 160
         },
         {
           "key": "deploy_params.domain",
-          "offset": 280,
+          "offset": 312,
           "width": 8
         }
       ]

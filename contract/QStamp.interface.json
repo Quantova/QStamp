@@ -40,18 +40,23 @@
               "width": 32
             },
             {
-              "key": "hi",
+              "key": "@genesis",
               "offset": 120,
+              "width": 32
+            },
+            {
+              "key": "hi",
+              "offset": 152,
               "width": 16
             },
             {
               "key": "lo",
-              "offset": 136,
+              "offset": 168,
               "width": 16
             },
             {
               "key": "kind",
-              "offset": 152,
+              "offset": 184,
               "width": 8
             }
           ],
@@ -95,23 +100,28 @@
               "width": 32
             },
             {
-              "key": "hi",
+              "key": "@genesis",
               "offset": 120,
+              "width": 32
+            },
+            {
+              "key": "hi",
+              "offset": 152,
               "width": 16
             },
             {
               "key": "lo",
-              "offset": 136,
+              "offset": 168,
               "width": 16
             },
             {
               "key": "kind",
-              "offset": 152,
+              "offset": 184,
               "width": 8
             },
             {
               "key": "until",
-              "offset": 160,
+              "offset": 192,
               "width": 8
             }
           ],
