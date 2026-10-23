@@ -116,16 +116,8 @@ jobs:
             if (!ok) { console.error("npm " + process.argv[1] + " cannot publish with trusted publishing, 11.5.1 or later is needed"); process.exit(1); }
           ' "$have"
       - name: publish the verified commit with provenance
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -n "${NPM_TOKEN:-}" ]; then
-            export NODE_AUTH_TOKEN="$NPM_TOKEN"
-            npmrc="$RUNNER_TEMP/publish.npmrc"
-            echo "//registry.npmjs.org/:_authToken=\${NODE_AUTH_TOKEN}" > "$npmrc"
-            export NPM_CONFIG_USERCONFIG="$npmrc"
-          fi
           npm publish --provenance --access public --ignore-scripts
       - name: the published version must carry provenance for this tag and commit
         env:
