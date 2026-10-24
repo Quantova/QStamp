@@ -297,6 +297,7 @@ function api(chain, ov) {
       return proof;
     },
     validatorSet: async (e) => (o.validatorSet ? o.validatorSet(chain, e) : chain.validatorSetAt(Number(e))),
+    rosterProof: async (e) => o.rosterProof(chain, Number(e)),
   };
 }
 
@@ -305,6 +306,7 @@ function client(chain, base, overrides) {
   const c = Object.assign({ base }, api(chain, o));
   if (o.operator) c.operator = o.operator;
   if (o.noState) delete c.storageAt;
+  if (!o.rosterProof) delete c.rosterProof;
   if (!o.proofs) {
     delete c.finality;
     delete c.eventProof;

@@ -666,7 +666,7 @@ test('a client core without the proof helpers leaves the anchor unproven', async
   const r = await verifyWith(pinned, receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: current.finality ? {} : current });
   assert.strictEqual(r.status, 'unproven');
   assert.match(r.checks.find((c) => c.name === 'proof').detail, /cannot check finality certificates and transaction inclusion proofs/);
-  for (const missing of Object.keys(F.HELPER_NAMES)) {
+  for (const missing of F.REQUIRED) {
     const partial = Object.assign({}, stubHelpers);
     delete partial[missing];
     const without = await verifyWith(pinned, receipt, { bytes: record, clients: only(chain), trustCustomEndpoints: true }, { helpers: partial });
@@ -1027,4 +1027,84 @@ test('substitute proof functions that pass the known certificate but do not bind
   const broken = only(chain, { eventProof: (c, h, i) => Object.assign(c.eventProofAt(Number(h), Number(i)), { steps: [{ sibling: '22'.repeat(32), left: true }], event_count: 2 }) });
   const lied = await verifyWith(pinned, receipt, { bytes: record, clients: broken, trustCustomEndpoints: true }, { helpers: alwaysIncluded });
   assert.strictEqual(qstamp.isProven(lied), false);
+});
+
+function walker(blocks, check) {
+  const calls = [];
+  const helpers = Object.assign({}, stubHelpers, {
+    nextRoster(chainId, genesis, epochBlocks, epoch, rosterJson, headerHex, certHex, nextJson, proofHex) {
+      calls.push(Number(epoch));
+      if (epochBlocks !== BigInt(blocks) || typeof chainId !== 'bigint' || genesis !== pinned.genesis) throw new Error('the roster proof is bound to another chain');
+      if (check && !check(JSON.parse(rosterJson), JSON.parse(nextJson), proofHex)) throw new Error('the roster commitment does not open');
+      return epoch + 1n;
+    },
+  });
+  return { helpers, calls };
+}
+
+const rosterReply = (members, extra) => (c, e) => Object.assign({ epoch: e, height: e, members, header_bytes: '0a', certificate: '0b', proof: 'cd' }, extra || {});
+const said = (r) => r.notices.concat(r.checks.filter((c) => !c.ok).map((c) => c.detail));
+const walkNet = (blocks) => testNetwork({ finality: { epochBlocks: blocks, rosters: { 0: ROSTER } } });
+const blocksFor = (receipt) => Math.floor(Number(receipt.anchor.height) / 3);
+const walking = (chain, blocks, rosterProof) => only(chain, Object.assign({ finality: (c, h) => Object.assign(c.finalityAt(Number(h)), { epoch: Math.floor(Number(h) / blocks) }) }, rosterProof ? { rosterProof } : {}));
+
+test('the roster of a later epoch is walked from the pinned one and every step is checked by the client core', async () => {
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const record = Buffer.from('a stamp after the pinned epoch');
+  const receipt = await stamped(chain, record);
+  const blocks = blocksFor(receipt);
+  const target = Math.floor(Number(receipt.anchor.height) / blocks);
+  assert.strictEqual(target, 3);
+  const { helpers, calls } = walker(blocks, (current, next, proof) => proof === 'cd' && current.length === 3 && next.length === 3);
+  const opts = { bytes: record, clients: walking(chain, blocks, rosterReply(ROSTER)), trustCustomEndpoints: true };
+  const r = await verifyWith(walkNet(blocks), receipt, opts, { helpers });
+  assert.strictEqual(r.status, 'valid', JSON.stringify(r));
+  assert.deepStrictEqual(calls, Array.from({ length: target }, (_, i) => i));
+  const again = await verifyWith(walkNet(blocks), receipt, opts, { helpers });
+  assert.strictEqual(again.status, 'valid');
+  assert.strictEqual(calls.length, target);
+});
+
+test('a roster change the client core refuses never proves a receipt and the roster an endpoint names is never trusted on its own', async () => {
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const record = Buffer.from('a stamp under a forged roster change');
+  const receipt = await stamped(chain, record);
+  const blocks = blocksFor(receipt);
+  const forged = [member(7, '100', 'f7')];
+  const cases = [
+    [rosterReply(ROSTER, { proof: 'ef' }), /could not be proven from the roster of epoch 0 \(the roster commitment does not open\)/],
+    [rosterReply(forged), /could not be proven from the roster of epoch 0/],
+    [rosterReply(ROSTER, { epoch: 99 }), /the roster proof is for another epoch/],
+    [rosterReply(ROSTER, { proof: 'zz' }), /the roster proof carries no proof/],
+    [rosterReply(ROSTER, { members: 'all of them' }), /the roster proof lists no members/],
+    [() => { throw new Error('the endpoint is unreachable'); }, /could not serve the roster proof of epoch 1/],
+  ];
+  for (const [rosterProof, pattern] of cases) {
+    const { helpers } = walker(blocks, (current, next, proof) => proof === 'cd' && next.length === 3);
+    const r = await verifyWith(walkNet(blocks), receipt, { bytes: record, clients: walking(chain, blocks, rosterProof), trustCustomEndpoints: true }, { helpers });
+    assert.strictEqual(r.status, 'unproven', String(pattern));
+    assert.ok(said(r).some((n) => pattern.test(n)), String(pattern) + ' ' + JSON.stringify(said(r)));
+  }
+  const silent = walker(blocks, () => true);
+  silent.helpers.nextRoster = () => 0n;
+  const quiet = await verifyWith(walkNet(blocks), receipt, { bytes: record, clients: walking(chain, blocks, rosterReply(ROSTER)), trustCustomEndpoints: true }, { helpers: silent.helpers });
+  assert.strictEqual(quiet.status, 'unproven');
+  assert.ok(said(quiet).some((n) => /did not confirm the roster of epoch 1/.test(n)), JSON.stringify(said(quiet)));
+});
+
+test('without a roster proof endpoint or the roster helper a later epoch stays unproven', async () => {
+  const chain = makeChain();
+  chain.certify = certificate([1, 2, 3]);
+  const record = Buffer.from('a stamp without roster proofs');
+  const receipt = await stamped(chain, record);
+  const blocks = blocksFor(receipt);
+  const { helpers } = walker(blocks, () => true);
+  const noEndpoint = await verifyWith(walkNet(blocks), receipt, { bytes: record, clients: walking(chain, blocks), trustCustomEndpoints: true }, { helpers });
+  assert.strictEqual(noEndpoint.status, 'unproven');
+  assert.ok(said(noEndpoint).some((n) => /does not serve roster proofs/.test(n)), JSON.stringify(said(noEndpoint)));
+  const noHelper = await verifyWith(walkNet(blocks), receipt, { bytes: record, clients: walking(chain, blocks, rosterReply(ROSTER)), trustCustomEndpoints: true }, { helpers: stubHelpers });
+  assert.strictEqual(noHelper.status, 'unproven');
+  assert.ok(said(noHelper).some((n) => /cannot check a roster change/.test(n)), JSON.stringify(said(noHelper)));
 });
