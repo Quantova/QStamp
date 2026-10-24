@@ -852,7 +852,7 @@ test('no finality request is made while no roster is pinned', async () => {
   const receipt = await stamped(chain, record);
   let asked = 0;
   const watcher = only(chain, { finality: () => { asked += 1; return null; } });
-  const r = await qstamp.verify(receipt, { bytes: record, clients: watcher, trustCustomEndpoints: true });
+  const r = await verifyWith(testNetwork(), receipt, { bytes: record, clients: watcher, trustCustomEndpoints: true }, null);
   assert.strictEqual(r.status, 'unproven');
   assert.strictEqual(asked, 0);
   assert.match(r.checks.find((c) => c.name === 'proof').detail, /no validator roster is pinned/);

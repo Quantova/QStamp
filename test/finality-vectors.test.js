@@ -43,7 +43,7 @@ function serve(s, over) {
     get_events: (b) => ({ events: b.height === V.height ? (o.events || s.events).map((e) => Object.assign({}, e)) : [] }),
     get_block: (b) => (b.height === V.height ? { block: encode('QBK', Buffer.from((o.shown || block).header_hash, 'hex')), height: V.height, time: o.shown ? V.time : time } : null),
     get_finality: (b) => (b.height === 0 ? checkpointReply(V.epoch, V.chain.name) : b.height === V.height ? {
-      height: V.height, epoch: V.epoch, chain_id: V.chain.name, header_bytes: block.header_bytes, header_hash: block.header_hash, certificate: block.certificate,
+      height: V.height, epoch: V.epoch, chain_id: o.finalityChainId === undefined ? V.chain.name : o.finalityChainId, header_bytes: block.header_bytes, header_hash: block.header_hash, certificate: block.certificate,
     } : null),
     get_event_proof: (b) => (b.height === V.height && b.index === block.index ? {
       height: V.height, index: block.index, event_count: block.event_count, event_root: block.event_root, leaf: block.leaf, steps: block.steps,
@@ -302,6 +302,18 @@ test('certificates from all and three of four of the stake prove a receipt confi
     assert.match(r.checks.find((c) => c.name === 'finality').detail, pattern, name);
     assert.match(r.checks.find((c) => c.name === 'finality').detail, /the anchoring transaction is included under it/, name);
     assert.ok(r.checks.some((c) => c.ok && /^transaction/.test(c.name)), name);
+  }
+});
+
+test('a finality proof that names the chain by its numeric id proves a receipt, another numeric id never does', async () => {
+  const numeric = String(V.chain.id);
+  const r = await check(S.a_all_sign, [{ finalityChainId: numeric }, { finalityChainId: numeric }]);
+  assert.strictEqual(r.status, 'valid', JSON.stringify(r.notices));
+  assert.strictEqual(r.trust, 'finality-proof');
+  for (const other of [String(BigInt(numeric) + 1n), '0' + numeric, numeric + ' ', 'Q-test-net-1']) {
+    const x = await check(S.a_all_sign, [{ finalityChainId: other }, { finalityChainId: other }]);
+    assert.notStrictEqual(x.status, 'valid', other);
+    assert.strictEqual(qstamp.isProven(x), false, other);
   }
 });
 

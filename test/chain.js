@@ -128,6 +128,7 @@ function checkpointReply(epoch, chainId, genesis) {
 
 function testNetwork(overrides) {
   const base = JSON.parse(JSON.stringify(NETWORKS.testnet));
+  base.finality = { genesis: base.genesis, checkpoint: null, epochBlocks: null, rosters: {} };
   const o = Object.assign({}, overrides || {});
   if (o.finality && o.finality.rosters && !('checkpoint' in o.finality)) o.finality = Object.assign({ checkpoint: checkpointOf(o.genesis || base.genesis) }, o.finality);
   return deepFreeze(Object.assign(base, o));

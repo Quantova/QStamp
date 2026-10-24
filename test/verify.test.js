@@ -519,12 +519,12 @@ test('a height beyond the block rate of the network is refused before any endpoi
   const record = Buffer.from('a contract award');
   const receipt = await stamped(chain, record);
   const t0 = receipt.anchor.time - 5;
-  for (const height of [(t0 - net.genesisTime) * 20 + 200, (t0 - net.genesisTime) * 6 + 241, 2 ** 40]) {
+  for (const height of [(t0 - net.genesisTime) * 20 + 200, (t0 - net.genesisTime) * net.blocks.maxPerSecond + net.blocks.slack + 1, 2 ** 40]) {
     const r = await qstamp.verify(forgedEarlier(receipt, height), { bytes: record, clients: [client(chain, 'https://alpha.example'), client(chain, 'https://beta.example')], trustCustomEndpoints: true });
     assert.strictEqual(r.status, 'invalid', String(height));
     assert.match(r.checks.find((c) => c.name === 'plausibility').detail, /higher than the chain can have reached/);
   }
-  assert.ok(net.blocks.maxPerSecond <= 6);
+  assert.ok(net.blocks.maxPerSecond <= 10);
 });
 
 test('a network given without bounds for its block heights is refused', async () => {
