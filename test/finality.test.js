@@ -1109,3 +1109,12 @@ test('without a roster proof endpoint or the roster helper a later epoch stays u
   assert.strictEqual(noHelper.status, 'unproven');
   assert.ok(said(noHelper).some((n) => /cannot check a roster change/.test(n)), JSON.stringify(said(noHelper)));
 });
+
+test('a roster is used only with a client core that verifies certificates of its key size', () => {
+  const helpers = F.helpersFrom(qcore);
+  assert.strictEqual(F.bindsGenesis(helpers), true);
+  const roster65 = JSON.parse(require('../lib/finality-check.json').roster);
+  const roster87 = JSON.parse(require('../lib/finality-check-87.json').roster);
+  assert.strictEqual(F.verifiableKeySize(helpers, roster65), true);
+  assert.strictEqual(F.verifiableKeySize(helpers, roster87), false);
+});
