@@ -225,7 +225,7 @@ test('a validator set is accepted only for the asked epoch and chain with a cons
     [Object.assign({}, good, { members: [] }), 3, /no members/],
     [Object.assign({}, good, { members: [good.members[0], good.members[0]] }), 3, /repeated id/],
     [Object.assign({}, good, { members: [Object.assign({}, good.members[0], { stake: 30 })] }), 3, /not a whole number/],
-    [Object.assign({}, good, { members: [Object.assign({}, good.members[0], { attest_pk: 'c3'.repeat(32) })] }), 3, /not an ML-DSA-65 public key/],
+    [Object.assign({}, good, { members: [Object.assign({}, good.members[0], { attest_pk: 'c3'.repeat(32) })] }), 3, /not an ML-DSA-65 or ML-DSA-87 public key/],
     [Object.assign({}, good, { members: [Object.assign({}, good.members[0], { bond_address: '' })] }), 3, /no bond address/],
     [without('root'), 3, /a sortition root is not hex/],
     [without('root_slots'), 3, /slot count of a sortition root/],
@@ -272,7 +272,8 @@ test('the pinned roster hands every sortition root to the client core and a rost
     [change({ root: rootOf(2).slice(0, 62) }), /a sortition root is not 32 bytes/],
     [change({ root_slots: 64 }), /slot count of a sortition root/],
     [change({ root_slots: '65537' }), /from 1 to 65536/],
-    [change({ attest_pk: 'b2'.repeat(16) }), /not an ML-DSA-65 public key/],
+    [change({ attest_pk: 'b2'.repeat(16) }), /not an ML-DSA-65 or ML-DSA-87 public key/],
+    [change({ attest_pk: 'b2'.repeat(2592) }), /mixes ML-DSA-65 and ML-DSA-87/],
     [change({ stake: 30 }), /not a whole number/],
     [change({ id: 1 }), /repeated id/],
   ];
