@@ -52,8 +52,9 @@ function decodeLeaf(hex) {
   const contract = take().toString('utf8');
   const selector = take().toString('hex');
   const data = take().toString('hex');
+  const tx = at < b.length ? take().toString('utf8') : '';
   if (at !== b.length) throw new Error('the event leaf is malformed');
-  return JSON.stringify({ contract, selector, data });
+  return JSON.stringify({ contract, selector, data, tx });
 }
 
 const CHECK = require('../lib/finality-check.json');
@@ -869,7 +870,7 @@ test('the proof helpers are detected on the client core under their published na
   const today = F.helpersFrom(qcore);
   assert.ok(F.helpersComplete(today));
   assert.strictEqual(require('@quantovainc/qcore/package.json').version, require('../package.json').dependencies['@quantovainc/qcore']);
-  assert.strictEqual(String(qcore.core.chainIdFromName(qstamp.NETWORKS.testnet.chainId)), '6995079887857407393');
+  assert.strictEqual(String(qcore.core.chainIdFromName(qstamp.NETWORKS.testnet.chainId)), '5165556344643346461');
   assert.throws(() => qcore.core.chainIdFromName('Q-test-net-1'), /retired/);
   assert.strictEqual(require('@quantovainc/qcore/package.json').version, require('../package.json').dependencies['@quantovainc/qcore']);
   for (const name of ['verifyFinality', 'verifyEvent', 'decodeEvent', 'verifyTransaction', 'chainIdFromName']) assert.strictEqual(typeof qcore.core[name], 'function', name);
