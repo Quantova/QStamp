@@ -565,3 +565,12 @@ test('a batch above the record limit is refused before any record is hashed', ()
   assert.throws(() => qstamp.prepare(new Array((1 << 20) + 1).fill({ digest: Buffer.alloc(32, 1) })), /at most 1048576 records/);
   assert.ok(Date.now() - started < 1000);
 });
+
+test('a receipt verified with no content and no endpoint that may be relied on is indeterminate not invalid', async () => {
+  const chain = makeChain();
+  const record = Buffer.from('a will');
+  const receipt = await stamped(chain, record);
+  const r = await qstamp.verify(receipt, { rpc: 'https://custom.example/' });
+  assert.strictEqual(r.status, 'indeterminate');
+  assert.strictEqual(r.contentChecked, false);
+});
