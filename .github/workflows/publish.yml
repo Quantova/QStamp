@@ -117,6 +117,8 @@ jobs:
             if (!ok) { console.error("npm " + process.argv[1] + " cannot publish with trusted publishing, 11.5.1 or later is needed"); process.exit(1); }
           ' "$have"
       - name: publish the verified commit with provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           npm publish --provenance --access public --ignore-scripts
