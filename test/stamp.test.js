@@ -94,7 +94,7 @@ test('a purpose label gives a separate deterministic signing account for each pu
   const hr = qstamp.purposeIndex('hr records');
   assert.strictEqual(hr, qstamp.purposeIndex('hr records'));
   assert.notStrictEqual(hr, qstamp.purposeIndex('ai agent actions'));
-  assert.ok(hr >= 2 ** 20 && hr < 2 ** 31);
+  assert.ok(hr >= 2 ** 20 && hr < 2 ** 20 + 2 ** 48 && Number.isSafeInteger(hr));
   for (const bad of ['', 'x'.repeat(129), 'a\nb', 7, null, 'e\u0301']) assert.throws(() => qstamp.purposeIndex(bad), /a purpose is a label/);
   const chain = makeChain();
   const [receipt] = await qstamp.stamp(options(chain, { index: hr }));
@@ -285,4 +285,54 @@ test('every stamping failure carries its stable error code', async () => {
   const split = mk();
   const later = cl(split, 'https://beta.example', { block: (c, h) => { const b = c.blocks.get(Number(h)); return b ? Object.assign({}, b, { time: b.time + 1 }) : null; } });
   await assert.rejects(qstamp.stamp({ seed, index: 0, records: records('c'), kind: 'document', clients: [cl(split, 'https://alpha.example'), later], timeoutMs: 1000 }), (e) => e.code === 'QSTAMP_DISAGREEMENT' && !!e.pending);
+});
+
+test('the default testnet is an explicit single operator network and refuses with a surfaced status', () => {
+  const { quorumRefusal } = require('../lib/stamp');
+  const { singleEndpointNetwork } = require('../lib/networks');
+  const net = qstamp.NETWORKS.testnet;
+  assert.strictEqual(net.singleEndpoint, true);
+  assert.strictEqual(singleEndpointNetwork(net), true);
+  const refusal = quorumRefusal(net, 1, {});
+  assert.ok(refusal instanceof Error);
+  assert.strictEqual(refusal.code, 'QSTAMP_SINGLE_ENDPOINT');
+  assert.strictEqual(refusal.trust, 'single-endpoint');
+  assert.match(refusal.message, /single operator/);
+  assert.strictEqual(quorumRefusal(net, 2, {}), null);
+  assert.strictEqual(quorumRefusal(net, 1, { trustSingleEndpoint: true }), null);
+});
+
+test('a purpose index is wide enough that purposes which collided under the old scheme no longer collide', () => {
+  const crypto = require('crypto');
+  const OLD_BASE = 1 << 20;
+  const OLD_SPAN = 2 ** 31 - OLD_BASE;
+  const oldIndex = (p) => {
+    const h = crypto.createHash('sha3-256').update('QSTAMP/PURPOSE/V1').update(Buffer.from([0])).update(Buffer.from(p, 'utf8')).digest();
+    return OLD_BASE + (h.readUInt32BE(0) % OLD_SPAN);
+  };
+  const seen = new Map();
+  let a = null;
+  let b = null;
+  for (let i = 0; i < 2000000 && b === null; i += 1) {
+    const label = 'purpose ' + i;
+    const key = oldIndex(label);
+    if (seen.has(key) && seen.get(key) !== label) {
+      a = seen.get(key);
+      b = label;
+    } else {
+      seen.set(key, label);
+    }
+  }
+  assert.ok(b !== null, 'a collision pair exists under the old 31 bit scheme');
+  assert.strictEqual(oldIndex(a), oldIndex(b));
+  assert.notStrictEqual(qstamp.purposeIndex(a), qstamp.purposeIndex(b));
+  assert.ok(Number.isSafeInteger(qstamp.purposeIndex(a)));
+});
+
+test('an unverified transaction that only self-claims it is finalised does not read as verified final', () => {
+  const { reportedFinal, verifiedFinal } = require('../lib/client');
+  assert.strictEqual(verifiedFinal({ status: 'finalised' }), true);
+  assert.strictEqual(verifiedFinal({ status: 'included' }), true);
+  assert.strictEqual(verifiedFinal({ status: 'unverified', reportedStatus: 'finalised' }), false);
+  assert.strictEqual(reportedFinal({ status: 'unverified', reportedStatus: 'finalised' }), true);
 });
