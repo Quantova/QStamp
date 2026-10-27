@@ -90,6 +90,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 24
+          registry-url: https://registry.npmjs.org
           package-manager-cache: false
       - name: the tagged commit must be on main and the tag must name the package version
         run: |
