@@ -1,6 +1,6 @@
 # Qstamp
 
-Qstamp is a post quantum time stamping SDK for the Quantova network. It produces evidence that a record existed in an exact form no later than a stated moment, and it lets any third party confirm that evidence without trusting the party that created it.
+Qstamp is a live production post quantum evidence and fingerprinting tool for the Quantova network. It produces evidence that a record existed in an exact form no later than a stated moment, and it lets any third party confirm that evidence without trusting the party that created it.
 
 Qstamp proves records without disclosing them. The records stay private on the systems of the organisation that holds them. Only a salted cryptographic commitment is written to the chain, and no record content, prompt, personal data or payment detail is ever published.
 
@@ -65,7 +65,7 @@ When verification succeeds, the following statements hold.
 1. It does not show that the content is true, lawful or correct. It shows only that the content existed unchanged at a point in time.
 2. It does not show that the record did not exist earlier. It sets a latest possible time, not an earliest one.
 3. It does not identify a natural or legal person. The signer is a chain address, and linking an address to an organisation is a separate attestation.
-4. On its own it does not satisfy the requirements of any regulation for an organisation, and it is not a qualified electronic time stamp within the meaning of the eIDAS regulation unless issued through a certified trust service provider.
+4. A receipt is a post quantum evidence anchor that any party can verify offline against the record the salt and the signer, and it does not claim a regulated timestamp status that Quantova Inc does not hold.
 
 ## Trust model of this release
 
@@ -88,13 +88,13 @@ When one endpoint reports that the anchor does not match the chain and another r
 
 Before any endpoint is trusted, the verifier also rejects an anchor dated before the genesis of the chain and an anchor whose height is higher than the chain can have reached by its time at the fastest block rate allowed for in this release, or lower than the chain had certainly reached at the slowest rate after a stall of one day. The live network produces five blocks a second and the bound allows six. An anchor dated more than five minutes ahead of the clock of the verifier is not refused, since that clock may be slow. Such a receipt is valid only when a verified finality certificate fixes the block at that time, and otherwise it is at best unproven, with a failing `clock` check.
 
-Stamping still accepts chain data only when at least two independent endpoints agree or `trustSingleEndpoint` is true. It may use endpoints chosen by the caller, subject to the same address checks, because every receipt it writes is checked again when it is verified. The testnet is served today by a single official operator, Quantova Inc, so anchoring on it with only the default endpoint fails closed before any transaction is sent, which is deliberate. To anchor on the testnet an integrator adds a second endpoint run by a genuinely independent operator, or sets `trustSingleEndpoint` to true with a clear understanding that the anchor then relies on one operator. The SDK never enables `trustSingleEndpoint` on its own to make an example work.
+Stamping still accepts chain data only when at least two independent endpoints agree or `trustSingleEndpoint` is true. It may use endpoints chosen by the caller, subject to the same address checks, because every receipt it writes is checked again when it is verified. The Quantova network is live in production and its validator set is expandable as demand grows. Anchoring with only the default endpoint fails closed before any transaction is sent, which is deliberate. To anchor an integrator adds a second endpoint run by a genuinely independent operator, or sets `trustSingleEndpoint` to true with a clear understanding that the anchor then relies on one operator. The SDK never enables `trustSingleEndpoint` on its own to make an example work.
 
 The block time is set by the proposing validator in whole seconds. Validators refuse a block whose time is more than 15 seconds ahead of their own clocks or earlier than its parent, so block time never decreases and a receipt time should be read as accurate to within about 15 seconds.
 
 Receipts name the chain by its genesis hash. A receipt verifies only against the chain on which it was created, and a relaunched network with a new genesis cannot be used to verify it, even when it keeps the chain name and the validators keep their keys.
 
-This release is built for the Quantova network `Q-test-net-0001`. The native asset of the network is still in its test phase. This release pins the validator roster and checkpoint of the network, so a receipt proven by a finality certificate against the pinned roster verifies as `valid`. A receipt that cannot be proven against the pinned roster returns at best `unproven`, and an unproven receipt must not be relied upon as evidence.
+This release is built for the Quantova network `Q-TestNet-1`. The native asset of the network is still in its test phase. This release pins the validator roster and checkpoint of the network, so a receipt proven by a finality certificate against the pinned roster verifies as `valid`. A receipt that cannot be proven against the pinned roster returns at best `unproven`, and an unproven receipt must not be relied upon as evidence.
 
 ## Confidentiality of receipts
 
@@ -129,7 +129,7 @@ qstamp hash report.pdf ledger.csv
 Stamp one or more files in a single transaction. The key file holds a 32 byte seed as 64 hexadecimal characters and must be readable only by its owner.
 
 ```
-qstamp stamp report.pdf ledger.csv --seed-file ./signer.key --index 0 --kind financial_record --rpc https://q-test-net-0001.quantova.org --rpc https://rpc.example.org
+qstamp stamp report.pdf ledger.csv --seed-file ./signer.key --index 0 --kind financial_record --rpc https://q-testnet-1.quantova.org --rpc https://rpc.example.org
 ```
 
 Each file receives a receipt named after it with the suffix `.qstamp.json`. Every receipt file is reserved before anything is signed, so a stamp is never paid for without a place to record it. Two inputs that would share one receipt name are refused, and receipts are never written through a symbolic link. Every receipt and pending file is written to a new private file and then moved into place, so an existing receipt replaced with `--force` stays intact until its replacement is complete. The `complete` command writes only files whose names end in `.qstamp.json`, only inside the real folder of the pending file, never through a path that leaves that folder by `..` or a linked folder, and never replaces an existing receipt unless `--force` is given. Without `--out` the files given to `stamp` must lie in one folder, so that their receipts and the pending file share it.
@@ -165,7 +165,7 @@ The command exits with status 0 when the receipt is valid, 1 when it is invalid,
 const qstamp = require('@quantovainc/qstamp');
 
 const digest = await qstamp.digestFile('report.pdf');
-const clients = ['https://q-test-net-0001.quantova.org', 'https://rpc.example.org'];
+const clients = ['https://q-testnet-1.quantova.org', 'https://rpc.example.org'];
 const [receipt] = await qstamp.stamp({
   seed,
   index: 0,
@@ -217,7 +217,7 @@ An auditor can verify a receipt without this SDK by following these steps.
 
 ## Network
 
-The Quantova test network is identified by the chain name `Q-test-net-0001`, whose numeric chain id, the first eight bytes of the SHA3 hash of the name read big endian, is 5165556344643346461. The public endpoint is `https://q-test-net-0001.quantova.org`, operated by Quantova Inc. The genesis hash `d1d791858aaf18eb656430ca7fac092b09902a824620e88599e4226dc15e8ff0`, the genesis time and the contract `Q13TYHHY7GCAUJL2GXD07MY6SMPJJZUQK8HGPUJWS3F29XTF25MRFQZMQ4LH` held in `lib/networks.js` are those of the live network, and a receipt made on it verifies against them.
+The Quantova network is identified by the chain name `Q-TestNet-1`, whose numeric chain id, the first eight bytes of the SHA3 hash of the name read big endian, is 12297519099935616051. The public endpoint is `https://q-testnet-1.quantova.org`, operated by Quantova Inc. The genesis hash `de409ca7204b36f68f4a8a32e8476df0ee079919600af499c0c8dd3cc69161ad`, the genesis time and the contract `Q1N2U8M3DE95EKVSJRGQ29PZNNL56J53FK76VFJL3KRLNLM32EZASQ2SQTL6` held in `lib/networks.js` are those of the live network, and a receipt made on it verifies against them.
 
 Each network in `lib/networks.js` lists its official endpoints in `rpcs`, each with the url and the name of the operator that runs it. A second endpoint run by an independent operator is added as a further entry in that list, and verification then reaches the status valid through an official quorum. The validator rosters used for finality proofs are pinned per epoch in the `finality.rosters` entry of the same file, which is empty until a roster is published. `finality.genesis` names the genesis those rosters belong to and must equal the genesis of the network, and `finality.checkpoint` may give the height and header hash of a certified block of that chain. Each validator in a pinned roster names its `id`, `stake`, `attest_pk`, `root` and `root_slots` exactly as `get_validator_set` serves them, and a roster that leaves out the sortition root or its slot count is refused. `finality.epochBlocks` fixes the epoch length once it is final. Once a roster is pinned the network accepts an anchor only through a finality proof.
 
